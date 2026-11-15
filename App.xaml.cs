@@ -129,7 +129,7 @@ public partial class App : System.Windows.Application
         SystemEvents.DisplaySettingsChanged += DisplayChanged;
         if(!smoke) StartWatching();
 
-        DispatcherUnhandledException += (_, args) => { if(smoke) { Shutdown(2); return; } Forms.MessageBox.Show(args.Exception.Message, "Бета 1"); args.Handled = true; };
+        DispatcherUnhandledException += (_, args) => { if(smoke) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "smoke-error.txt"),args.Exception.ToString()); Shutdown(2); return; } Forms.MessageBox.Show(args.Exception.Message, "Бета 1"); args.Handled = true; };
         if(!smoke && e.Args.Contains("--settings")) OpenSettings();
         if(smoke)
         {
@@ -333,20 +333,24 @@ public partial class App : System.Windows.Application
     {
         dock.Children.Clear();
         int size=prefs.DockIconSize;
-        var start=Symbol("\uE782",()=>MediaKey(0x5B),"Пуск",size); start.Padding=new Thickness(9,8,9,8); dock.Children.Add(start);
+        var start=Button("Пуск",()=>MediaKey(0x5B)); start.Content=WindowsMark(size); start.Padding=new Thickness(9,8,9,8); dock.Children.Add(start);
         var find=Symbol("\uE721",()=> { var w=panels.First(p=>p.Title.EndsWith("Приложения")); w.Show(); w.Activate(); search.Focus(); },"Найти приложение",size); find.Padding=new Thickness(9,8,9,8); dock.Children.Add(find);
         
         foreach(var a in taskbarPins) { var b=Button(a.Name,()=>Launch(a.Path)); b.Content=Icon(a.Path,size); b.Padding=new Thickness(9,8,9,8); dock.Children.Add(b); }
-        if(taskbarPins.Count==0) { var empty=Button("Нет закреплений",()=>Launch("ms-settings:taskbar"),"Закрепите приложения в панели задач Windows и обновите список в настройках"); dock.Children.Add(empty); }
         var window=panels.FirstOrDefault(p=>p.Title.EndsWith("Док"));
         if(window!=null) { ((Border)window.Content).LayoutTransform=new ScaleTransform(DockScale,DockScale); window.Width=DockWidth*DockScale; window.Height=(size+38)*DockScale; Position(window); }
+    }
+    static UIElement WindowsMark(int size)
+    {
+        var mark=new Grid { Width=size, Height=size }; mark.RowDefinitions.Add(new RowDefinition()); mark.RowDefinitions.Add(new RowDefinition()); mark.ColumnDefinitions.Add(new ColumnDefinition()); mark.ColumnDefinitions.Add(new ColumnDefinition());
+        for(int i=0;i<4;i++) { var tile=new Border { Background=Brush(i<2?"#55CDF8":"#1CA6EC"), Margin=new Thickness(1), CornerRadius=new CornerRadius(1) }; Grid.SetRow(tile,i/2); Grid.SetColumn(tile,i%2); mark.Children.Add(tile); } return mark;
     }
     void CreateTrayPanel()
     {
         var row=new StackPanel { Orientation=Orientation.Horizontal, VerticalAlignment=VerticalAlignment.Center };
         var beta=Button("Бета 1",OpenSettings,"Бета 1 — настройки"); beta.Content=Icon(Environment.ProcessPath!,24);
         var menu=new ContextMenu();
-        foreach(var item in new[] { ("Настройки",(Action)OpenSettings),("Показать / скрыть панели",(Action)Toggle),("Вернуть панель задач Windows",(Action)(()=> { prefs.HideTaskbar=false; desktop.RestoreTaskbars(); Save(); })),("Выход",(Action)(()=>Shutdown())) }) { var entry=new MenuItem { Header=item.Item1 }; entry.Click+=(_,_)=>item.Item2(); menu.Items.Add(entry); }
+        foreach(var item in new[] { ("Настройки",(Action)OpenSettings),("Корзина",(Action)(()=>Launch("shell:RecycleBinFolder"))),("Этот компьютер",(Action)(()=>Launch("shell:MyComputerFolder"))),("Показать / скрыть панели",(Action)Toggle),("Вернуть панель задач Windows",(Action)(()=> { prefs.HideTaskbar=false; desktop.RestoreTaskbars(); Save(); })),("Выход",(Action)(()=>Shutdown())) }) { var entry=new MenuItem { Header=item.Item1 }; entry.Click+=(_,_)=>item.Item2(); menu.Items.Add(entry); }
         beta.ContextMenu=menu; row.Children.Add(beta);
         row.Children.Add(Symbol("\uE701",()=>Launch("ms-settings:network"),"Сеть",18));
         row.Children.Add(Symbol("\uE767",()=>Launch("ms-settings:sound"),"Громкость",18));
@@ -371,6 +375,7 @@ public partial class App : System.Windows.Application
         if(settings!=null) { settings.WindowState=WindowState.Normal; settings.Activate(); return; }
         var body=new StackPanel { Margin=new Thickness(28) };
         body.Children.Add(Label("Бета 1 · Панель управления",25));
+        body.Children.Add(new TextBlock { Text="Версия 0.3.0", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
         body.Children.Add(new TextBlock { Text="Внешний вид и рабочий стол", Opacity=.7, Margin=new Thickness(0,6,0,22) });
         void Range(string name,double min,double max,double value,Action<double> update,bool integer=false)
         {

@@ -25,5 +25,5 @@ internal static class PreviewCapture
     {
         element.UpdateLayout(); var bitmap=new RenderTargetBitmap((int)Math.Ceiling(element.ActualWidth),(int)Math.Ceiling(element.ActualHeight),96,96,PixelFormats.Pbgra32); bitmap.Render(element); Save(bitmap,name);
     }
-    static void Save(BitmapSource image,string name) { var encoder=new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image)); using var file=File.Create(Path.Combine(AppContext.BaseDirectory,name)); encoder.Save(file); }
+    static void Save(BitmapSource image,string name) { var encoder=new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image)); using var file=File.Create(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, name)); encoder.Save(file); }
 }

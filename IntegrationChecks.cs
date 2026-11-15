@@ -44,7 +44,7 @@ internal static class IntegrationChecks
             Require(File.Exists(shortcut)&&Directory.GetFiles(desktop,"Test (Бета 1 *).lnk").Length==1,"legacy migration preserves conflicts");
             return 0;
         }
-        catch(Exception ex) { File.WriteAllText(Path.Combine(AppContext.BaseDirectory,"integration-error.txt"),ex.ToString()); return 4; }
+        catch(Exception ex) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "integration-error.txt"),ex.ToString()); return 4; }
         finally { try { Directory.Delete(root,true); } catch { } }
     }
     static byte[] Pixels(BitmapSource bitmap) { int stride=(bitmap.PixelWidth*bitmap.Format.BitsPerPixel+7)/8; var bytes=new byte[stride*bitmap.PixelHeight]; bitmap.CopyPixels(bytes,stride,0); return bytes; }
