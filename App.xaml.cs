@@ -45,6 +45,7 @@ public partial class App : System.Windows.Application
     GlobalSystemMediaTransportControlsSessionManager? media;
     bool readingMedia;
     bool shellHidden;
+    bool ownsInstance;
     readonly List<IntPtr> hiddenShellWindows = new();
     string category = "Все";
     Window? settings;
@@ -54,6 +55,7 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         mutex = new System.Threading.Mutex(true, "Beta1.Desktop.SingleInstance", out bool first);
         if (!first) { Shutdown(); return; }
+        ownsInstance=true;
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         try { if (File.Exists(storage)) prefs = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(storage)) ?? new(); } catch { }
         if (prefs.Folders.Count == 0) prefs.Folders = new() {
@@ -281,7 +283,7 @@ public partial class App : System.Windows.Application
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute=true }); } catch(Exception ex) { Forms.MessageBox.Show("Не удалось открыть:\n"+path+"\n\n"+ex.Message,"Бета 1"); }
     }
     static void MediaKey(byte key) { keybd_event(key,0,0,UIntPtr.Zero); keybd_event(key,0,2,UIntPtr.Zero); }
-    protected override void OnExit(ExitEventArgs e) { SystemEvents.DisplaySettingsChanged-=DisplayChanged; timer.Stop(); SetCleanDesktop(false); tray?.Dispose(); Save(); mutex?.Dispose(); base.OnExit(e); }
+    protected override void OnExit(ExitEventArgs e) { SystemEvents.DisplaySettingsChanged-=DisplayChanged; timer.Stop(); SetCleanDesktop(false); tray?.Dispose(); if(ownsInstance) Save(); mutex?.Dispose(); base.OnExit(e); }
     delegate bool EnumWindowProc(IntPtr h,IntPtr parameter);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowProc callback,IntPtr parameter);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr FindWindow(string name,string? title);

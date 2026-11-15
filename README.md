@@ -9,7 +9,7 @@ Windows 10 версии 2004 или новее / Windows 11, x64. Откройт
 При самостоятельной сборке установите .NET 8 SDK:
 
 ```powershell
-dotnet publish Beta1.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
+dotnet publish Beta1.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
 .\publish\Beta1.exe
 ```
 
