@@ -16,7 +16,9 @@ internal static class PreviewCapture
             {
                 window.UpdateLayout();
                 var bitmap=new RenderTargetBitmap((int)Math.Ceiling(window.Width),(int)Math.Ceiling(window.Height),96,96,PixelFormats.Pbgra32);
-                bitmap.Render((Visual)window.Content); context.DrawImage(bitmap,new Rect(window.Left,window.Top,window.Width,window.Height));
+                var content=(FrameworkElement)window.Content;
+                content.Measure(new Size(window.Width,window.Height)); content.Arrange(new Rect(0,0,window.Width,window.Height)); content.UpdateLayout();
+                bitmap.Render(content); context.DrawImage(bitmap,new Rect(window.Left,window.Top,window.Width,window.Height));
             }
         }
         var all=new RenderTargetBitmap(1920,1080,96,96,PixelFormats.Pbgra32); all.Render(scene); Save(all,"desktop-preview.png");

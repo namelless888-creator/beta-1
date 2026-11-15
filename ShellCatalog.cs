@@ -88,7 +88,7 @@ internal static class ShellCatalog
             if(SHParseDisplayName(path,IntPtr.Zero,out pidl,0,out _)<0) return null;
             // Request only the system image-list INDEX, then draw it with NO overlay flags.
             // SHGFI_ICON / ExtractAssociatedIcon add a shortcut arrow even without ADDOVERLAYS.
-            var handle=SHGetFileInfo(pidl,0,out var info,(uint)Marshal.SizeOf<SHFILEINFO>(),0x8000 | 0x8);
+            var handle=SHGetFileInfo(pidl,0,out var info,(uint)Marshal.SizeOf<SHFILEINFO>(),0x4000 | 0x8);
             if(handle==IntPtr.Zero) return null;
             var iid=new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950");
             if(SHGetImageList(2,ref iid,out list)>=0) icon=ImageList_GetIcon(list,info.iIcon,1);

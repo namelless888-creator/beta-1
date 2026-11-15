@@ -25,6 +25,8 @@ internal static class IntegrationChecks
             var source=ShellCatalog.Icon(Environment.ProcessPath!)!; var fromLink=ShellCatalog.Icon(shortcut)!;
             Require(source!=null && fromLink!=null,"icons loaded");
             Require(Pixels(source!).SequenceEqual(Pixels(fromLink!)),"shortcut icon must equal original icon, without arrow overlay");
+            var directoryIcon=ShellCatalog.Icon(folder)!;
+            Require(directoryIcon!=null && !Pixels(source!).SequenceEqual(Pixels(directoryIcon!)),"application and folder must not share a generic fallback icon");
             var before=Directory.GetFiles(desktop).ToDictionary(p=>p,File.ReadAllBytes);
             using var window=new Forms.Form { ShowInTaskbar=false }; window.Show(); Forms.Application.DoEvents();
             var controls=new CommonControls { Size=8, Classes=1 }; InitCommonControlsEx(ref controls);

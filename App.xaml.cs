@@ -212,7 +212,7 @@ public partial class App : System.Windows.Application
         var row=new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition { Width=GridLength.Auto }); row.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(1,GridUnitType.Star) }); row.ColumnDefinitions.Add(new ColumnDefinition { Width=GridLength.Auto });
         var left=new StackPanel { Orientation=Orientation.Horizontal };
-        var brand=Button("БЕТА 1",OpenSettings,"Панель управления Бета 1"); brand.FontSize=20; brand.FontWeight=FontWeights.SemiBold; brand.Margin=new Thickness(0,0,14,0); left.Children.Add(brand);
+        var brand=Button("БЕТА 1",OpenSettings,"Панель управления Бета 1"); brand.Content=new TextBlock { Text="БЕТА 1", FontSize=20, FontWeight=FontWeights.SemiBold }; brand.Margin=new Thickness(0,0,14,0); left.Children.Add(brand);
         foreach(var name in new[] { "Работа","Личное" }) { var b=Button(name,()=> { prefs.Workspace=name; category=name=="Работа"?"Работа":"Все"; Save(); RefreshApps(); }); workspaces[name]=b; left.Children.Add(b); }
         row.Children.Add(left);
         topDate.HorizontalAlignment=HorizontalAlignment.Center; Grid.SetColumn(topDate,1); row.Children.Add(topDate);
@@ -407,7 +407,7 @@ public partial class App : System.Windows.Application
         body.Children.Add(new TextBlock { Text="Alt + перетаскивание — переместить панель. Закрепления дока настраиваются в штатной панели задач Windows. Значок Бета 1 в собственном трее открывает эту панель управления.", TextWrapping=TextWrapping.Wrap, Margin=new Thickness(0,18,0,12), Opacity=.75 });
         body.Children.Add(Button("Вернуть рабочий стол Windows и выйти",()=>Shutdown()));
         settings=new Window { Title="Бета 1 — Панель управления", Width=620, Height=Math.Min(850,SystemParameters.WorkArea.Height-40), MinWidth=480, MinHeight=450,
-            Background=Brush("#171D1B"), Content=new ScrollViewer { Content=body, VerticalScrollBarVisibility=ScrollBarVisibility.Auto }, WindowStartupLocation=WindowStartupLocation.CenterScreen };
+            Background=Brush("#171D1B"), Content=new ScrollViewer { Content=body, Background=Brush("#171D1B"), VerticalScrollBarVisibility=ScrollBarVisibility.Auto }, WindowStartupLocation=WindowStartupLocation.CenterScreen };
         settings.Icon=Imaging.CreateBitmapSourceFromHIcon(brandIcon!.Handle,Int32Rect.Empty,BitmapSizeOptions.FromEmptyOptions());
         settings.Closed+=(_,_)=> { Save(); settings=null; }; settings.Show(); settings.Activate();
     }
