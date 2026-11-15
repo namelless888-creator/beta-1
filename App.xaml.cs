@@ -496,7 +496,7 @@ public partial class App : System.Windows.Application
         if(settings!=null) { settings.WindowState=WindowState.Normal; settings.Activate(); return; }
         var body=new StackPanel { Margin=new Thickness(28) };
         body.Children.Add(Label("Бета 1 · Панель управления",25));
-        body.Children.Add(new TextBlock { Text="Версия 0.5.0", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
+        body.Children.Add(new TextBlock { Text="Версия 0.5.1", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
         body.Children.Add(new TextBlock { Text="Внешний вид и рабочий стол", Opacity=.7, Margin=new Thickness(0,6,0,22) });
         void Range(string name,double min,double max,double value,Action<double> update,bool integer=false)
         {
