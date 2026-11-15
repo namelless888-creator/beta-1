@@ -18,6 +18,7 @@ internal static class ShellActions
         var input=new[] { Key(modifier,false),Key(key,false),Key(key,true),Key(modifier,true) };
         if(SendInput((uint)input.Length,input,Marshal.SizeOf<INPUT>())!=input.Length) throw new InvalidOperationException("Windows не приняла сочетание клавиш. Проверьте, что Бета 1 и активное приложение запущены с одинаковыми правами.");
     }
+    internal static void Escape() { var input=new[] { Key(0x1B,false),Key(0x1B,true) }; SendInput(2,input,Marshal.SizeOf<INPUT>()); }
     static INPUT Key(ushort key,bool up) => new() { Type=1, Data=new UNION { Keyboard=new KEYBOARD { Key=key, Flags=up?2u:0 } } };
     [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint Type; public UNION Data; }
     [StructLayout(LayoutKind.Explicit,Size=32)] struct UNION { [FieldOffset(0)] public KEYBOARD Keyboard; }

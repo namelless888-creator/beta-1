@@ -52,11 +52,12 @@ internal sealed class DesktopIntegration
     public bool DisplayNativeTray(bool visible,out NativeTray.Rect area)
     {
         if(!NativeTray.Find(out var h,out area,out var bar)) return false;
-        if(!journal.TrayRegions.Exists(r=>r.Handle==h.ToInt64())) { journal.TrayRegions.Add(NativeTray.Capture(h)); Save(); }
+        if(!journal.TrayRegions.Exists(r=>r.Handle==h.ToInt64() && r.Process==NativeTray.ProcessId(h))) { journal.TrayRegions.Add(NativeTray.Capture(h)); Save(); }
         NativeTray.Clip(h,area,bar,visible); HideTaskbars(h); return true;
     }
     public void RestoreTaskbars()
     {
+        if(journal.TrayRegions.Count==0 && journal.Taskbars.Count==0) return;
         foreach(var region in journal.TrayRegions) NativeTray.Restore(region);
         journal.TrayRegions.Clear();
         foreach(var value in journal.Taskbars)

@@ -140,7 +140,7 @@ public partial class App : System.Windows.Application
         SystemEvents.DisplaySettingsChanged += DisplayChanged;
         if(!smoke) StartWatching();
 
-        DispatcherUnhandledException += (_, args) => { if(smoke) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "smoke-error.txt"),args.Exception.ToString()); Shutdown(2); return; } Forms.MessageBox.Show(args.Exception.Message, "Бета 1"); args.Handled = true; };
+        DispatcherUnhandledException += (_, args) => { if(smoke) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "smoke-error.txt"),args.Exception.ToString()); args.Handled=true; Shutdown(2); return; } Forms.MessageBox.Show(args.Exception.Message, "Бета 1"); args.Handled = true; };
         if(!smoke && e.Args.Contains("--settings")) OpenSettings();
         if(smoke)
         {
@@ -440,7 +440,9 @@ public partial class App : System.Windows.Application
         volumeWindow=new Window { Title="Бета 1 — Громкость", Width=340,SizeToContent=SizeToContent.Height,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,AllowsTransparency=true,Background=Brushes.Transparent,ShowInTaskbar=false,Topmost=true,Content=new Border { Background=Brush("#202A26"),CornerRadius=new CornerRadius(16),BorderBrush=Brush("#84988C"),BorderThickness=new Thickness(1),Child=body } };
         volumeWindow.Loaded+=(_,_)=> { volumeWindow.Left=DesktopArea.Width-volumeWindow.ActualWidth-24; volumeWindow.Top=DesktopArea.Height-volumeWindow.ActualHeight-110; };
         volumeWindow.PreviewKeyDown+=(_,e)=> { if(e.Key==Key.Escape) volumeWindow.Close(); };
-        volumeWindow.Deactivated+=(_,_)=>volumeWindow?.Close();
+        bool closingVolume=false; var volumePopup=volumeWindow;
+        volumePopup.Closing+=(_,_)=>closingVolume=true;
+        volumePopup.Deactivated+=(_,_)=> { if(!closingVolume) volumePopup.Close(); };
         volumeWindow.Closed+=(_,_)=> { poll?.Stop(); audio?.Dispose(); volumeWindow=null; }; volumeWindow.Show(); volumeWindow.Activate();
     }
     static UIElement WindowsMark(int size)

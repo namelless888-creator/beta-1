@@ -35,6 +35,7 @@ internal static class WindowTasks
         },IntPtr.Zero);
         return result;
     }
+    internal static string ForegroundProcessName() { GetWindowThreadProcessId(GetForegroundWindow(),out uint pid); try { using var p=Process.GetProcessById((int)pid); return p.ProcessName; } catch { return "unknown"; } }
     public static IntPtr Foreground => GetForegroundWindow();
     public static void Minimize(IntPtr window) { if(IsWindow(window)) ShowWindowAsync(window,6); }
     public static void Activate(IntPtr window,bool toggle=true)

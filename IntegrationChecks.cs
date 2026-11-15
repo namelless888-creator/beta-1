@@ -56,8 +56,10 @@ internal static class IntegrationChecks
             File.WriteAllText(Path.Combine(state,"desktop-recovery.json"),JsonSerializer.Serialize(new DesktopIntegration.Journal { Links=new() { new(shortcut,old) } }));
             new DesktopIntegration(state).Recover();
             Require(File.Exists(shortcut)&&Directory.GetFiles(desktop,"Test (Бета 1 *).lnk").Length==1,"legacy migration preserves conflicts");
+            ShellActions.Shortcut(0x11,0x1B); System.Threading.Thread.Sleep(900); string startProcess=WindowTasks.ForegroundProcessName(); ShellActions.Escape();
+            System.Threading.Thread.Sleep(200); ShellActions.Shortcut(0x5B,0x53); System.Threading.Thread.Sleep(1200); string searchProcess=WindowTasks.ForegroundProcessName(); ShellActions.Escape();
             bool trayFound=NativeTray.Find(out _,out var trayArea,out _);
-            File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Existing and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\n");
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Existing and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\nStart foreground: {startProcess}\nSearch foreground: {searchProcess}\n");
             return 0;
         }
         catch(Exception ex) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "integration-error.txt"),ex.ToString()); return 4; }

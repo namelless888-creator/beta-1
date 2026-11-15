@@ -29,6 +29,7 @@ internal static class NativeTray
         catch(ElementNotAvailableException) { } catch(COMException) { }
         return false;
     }
+    public static uint ProcessId(IntPtr h) { GetWindowThreadProcessId(h,out uint pid); return pid; }
     public static SavedRegion Capture(IntPtr h)
     {
         GetWindowThreadProcessId(h,out uint pid); var saved=new SavedRegion { Handle=h.ToInt64(),Process=pid,Visible=IsWindowVisible(h),Topmost=(GetWindowLong(h,-20)&8)!=0 };
