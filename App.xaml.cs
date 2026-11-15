@@ -367,7 +367,7 @@ public partial class App : System.Windows.Application
     {
         var stack=new Grid(); stack.RowDefinitions.Add(new RowDefinition()); stack.RowDefinitions.Add(new RowDefinition { Height=new GridLength(6) }); stack.Children.Add(icon);
         var mark=new Border { Height=3,Width=windows.Any(w=>w.Handle==previousForeground)?22:windows.Count>1?16:6, CornerRadius=new CornerRadius(2), Background=windows.Any(w=>w.Handle==previousForeground)?Brush("#64E4DA"):Brush("#C5D1C9"), Visibility=windows.Count>0?Visibility.Visible:Visibility.Hidden, Margin=new Thickness(0,3,0,0) }; Grid.SetRow(mark,1); stack.Children.Add(mark);
-        var button=Button(title,()=> { bottomBar?.Hold(); if(windows.Count==0) launch(); else if(windows.Count==1) ActivateTask(windows[0]); else { buttonMenu(windows).IsOpen=true; } });
+        Button button=null!; button=Button(title,()=> { bottomBar?.Hold(); if(windows.Count==0) launch(); else if(windows.Count==1) ActivateTask(windows[0]); else { button.ContextMenu.IsOpen=true; } });
         button.Content=stack; button.Padding=new Thickness(9,5,9,5);
         var menu=buttonMenu(windows); if(canLaunch) { var newWindow=new MenuItem { Header=windows.Count>0?"Открыть новый экземпляр":"Запустить" }; newWindow.Click+=(_,_)=>launch(); menu.Items.Add(newWindow); } button.ContextMenu=menu; dock.Children.Add(button);
         ContextMenu buttonMenu(List<WindowTask> tasks)
@@ -408,7 +408,7 @@ public partial class App : System.Windows.Application
         bool old=nativeTray; double oldReserve=nativeReserve;
         nativeTray=prefs.HideTaskbar && desktop.DisplayNativeTray(show,out _);
         if(!prefs.HideTaskbar) desktop.RestoreTaskbars();
-        else if(!nativeTray) desktop.HideTaskbars();
+        else if(!nativeTray) desktop.RestoreTaskbars();
         var window=panels.FirstOrDefault(w=>w.Title.EndsWith("Состояние")); if(window==null) return;
         if(nativeTray && NativeTray.Find(out _,out var area,out _))
         {
@@ -503,7 +503,7 @@ public partial class App : System.Windows.Application
         Check("Использовать док Бета 1 и живой трей Windows",prefs.HideTaskbar,v=> { prefs.HideTaskbar=v; UpdateShellTray(true); });
         Check("Скрывать значки рабочего стола Windows",prefs.HideDesktopIcons,v=> { prefs.HideDesktopIcons=v; if(v) desktop.HideDesktopIcons(); else desktop.RestoreDesktopIcons(); });
         body.Children.Add(new TextBlock { Text="Файлы и ярлыки остаются на своих местах. Скрывается только отображение значков Windows; при выходе оно восстанавливается.", TextWrapping=TextWrapping.Wrap, Foreground=Brush("#CCD6CF"), Margin=new Thickness(0,0,0,12) });
-        if(!nativeTray && prefs.HideTaskbar && !smoke) body.Children.Add(new TextBlock { Text="Эта версия Explorer не предоставила область трея. Верните штатную панель задач кнопкой в меню Бета 1, чтобы открыть все значки уведомлений.",TextWrapping=TextWrapping.Wrap,Foreground=Brush("#E5CC91"),Margin=new Thickness(0,8,0,12) });
+        if(!nativeTray && prefs.HideTaskbar && !smoke) body.Children.Add(new TextBlock { Text="Эта версия Explorer не предоставила область трея. Штатная панель задач оставлена доступной, чтобы сохранить доступ ко всем значкам уведомлений.",TextWrapping=TextWrapping.Wrap,Foreground=Brush("#E5CC91"),Margin=new Thickness(0,8,0,12) });
         bool autostart;
         using(var key=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) autostart=key?.GetValue("Beta1")!=null;
         Check("Запускать при входе в Windows",autostart,v=> { using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"); if(v) key.SetValue("Beta1","\""+Environment.ProcessPath+"\""); else key.DeleteValue("Beta1",false); });

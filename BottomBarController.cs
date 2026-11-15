@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Animation;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Forms=System.Windows.Forms;
 namespace Beta1;
@@ -38,7 +39,7 @@ internal sealed class BottomBarController : IDisposable
         var screen=new Rect(0,0,SystemParameters.PrimaryScreenWidth,SystemParameters.PrimaryScreenHeight);
         bool bottom=point.X>=screen.Left && point.X<=screen.Right && point.Y>=screen.Bottom-4 && point.Y<=screen.Bottom;
         bool over=shown && (new Rect(dock.Left-8,dockTop-8,dock.Width+16,dock.Height+40).Contains(point) || point.X>=tray.Left-8 && point.Y>=trayTop-10 && point.Y<=screen.Bottom);
-        var gui=new GUI { Size=Marshal.SizeOf<GUI>() }; bool menu=GetGUIThreadInfo(0,ref gui) && (gui.Flags&0x1C)!=0;
+        var gui=new GUI { Size=Marshal.SizeOf<GUI>() }; bool menu=GetGUIThreadInfo(0,ref gui) && (gui.Flags&0x1C)!=0 || MenuOpen(dock) || MenuOpen(tray);
         bool overflow=Visible("NotifyIconOverflowWindow") || Visible("TopLevelWindowForOverflowXamlIsland");
         bool desired=!autoHide() || desktop || bottom || over || menu || overflow || DateTime.UtcNow<holdUntil;
         if(desired) { leaveAt=DateTime.MinValue; SetShown(true,!dock.Topmost); }
@@ -55,6 +56,12 @@ internal sealed class BottomBarController : IDisposable
             w.BeginAnimation(Window.TopProperty,new DoubleAnimation(w.Top,target,TimeSpan.FromMilliseconds(180)) { EasingFunction=new CubicEase { EasingMode=EasingMode.EaseOut }, FillBehavior=FillBehavior.HoldEnd });
         }
         shellVisibility(value);
+    }
+    static bool MenuOpen(DependencyObject root)
+    {
+        if(root is FrameworkElement element && element.ContextMenu?.IsOpen==true) return true;
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++) if(MenuOpen(VisualTreeHelper.GetChild(root,i))) return true;
+        return false;
     }
     static bool Visible(string cls) { var h=FindWindow(cls,null); return h!=IntPtr.Zero && IsWindowVisible(h); }
     public void Dispose() { timer.Stop(); dock.BeginAnimation(Window.TopProperty,null); tray.BeginAnimation(Window.TopProperty,null); }

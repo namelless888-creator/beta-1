@@ -56,14 +56,21 @@ internal static class IntegrationChecks
             File.WriteAllText(Path.Combine(state,"desktop-recovery.json"),JsonSerializer.Serialize(new DesktopIntegration.Journal { Links=new() { new(shortcut,old) } }));
             new DesktopIntegration(state).Recover();
             Require(File.Exists(shortcut)&&Directory.GetFiles(desktop,"Test (Бета 1 *).lnk").Length==1,"legacy migration preserves conflicts");
-            ShellActions.Shortcut(0x11,0x1B); System.Threading.Thread.Sleep(900); string startProcess=WindowTasks.ForegroundProcessName(); ShellActions.Escape();
-            System.Threading.Thread.Sleep(200); ShellActions.Shortcut(0x5B,0x53); System.Threading.Thread.Sleep(1200); string searchProcess=WindowTasks.ForegroundProcessName(); ShellActions.Escape();
+            ShellActions.Shortcut(0x11,0x1B); System.Threading.Thread.Sleep(1800); string startProcess=WindowTasks.ForegroundProcessName(); CaptureScreen("start-control.png"); ShellActions.Escape();
+            System.Threading.Thread.Sleep(200); ShellActions.Shortcut(0x5B,0x53); System.Threading.Thread.Sleep(1800); string searchProcess=WindowTasks.ForegroundProcessName(); CaptureScreen("search-control.png"); ShellActions.Escape();
             bool trayFound=NativeTray.Find(out _,out var trayArea,out _);
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Existing and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\nStart foreground: {startProcess}\nSearch foreground: {searchProcess}\n");
             return 0;
         }
         catch(Exception ex) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "integration-error.txt"),ex.ToString()); return 4; }
         finally { try { Directory.Delete(root,true); } catch { } }
+    }
+    static void CaptureScreen(string name)
+    {
+        var bounds=Forms.Screen.PrimaryScreen!.Bounds;
+        using var image=new System.Drawing.Bitmap(bounds.Width,bounds.Height);
+        using var graphics=System.Drawing.Graphics.FromImage(image); graphics.CopyFromScreen(bounds.Location,System.Drawing.Point.Empty,bounds.Size);
+        image.Save(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,name),System.Drawing.Imaging.ImageFormat.Png);
     }
     static byte[] Pixels(BitmapSource bitmap) { int stride=(bitmap.PixelWidth*bitmap.Format.BitsPerPixel+7)/8; var bytes=new byte[stride*bitmap.PixelHeight]; bitmap.CopyPixels(bytes,stride,0); return bytes; }
     static void Require(bool test,string name) { if(!test) throw new InvalidOperationException(name); }
