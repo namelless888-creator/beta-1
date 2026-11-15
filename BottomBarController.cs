@@ -26,7 +26,7 @@ internal sealed class BottomBarController : IDisposable
         dock.PreviewMouseDown+=(_,_)=>Hold(); tray.PreviewMouseDown+=(_,_)=>Hold();
     }
     public void Relayout() { dock.BeginAnimation(Window.TopProperty,null); tray.BeginAnimation(Window.TopProperty,null); dockTop=dock.Top; trayTop=tray.Top; if(!shown) { dock.Top=SystemParameters.PrimaryScreenHeight-2; tray.Top=SystemParameters.PrimaryScreenHeight-2; } }
-    public void Hold() { holdUntil=DateTime.UtcNow.AddSeconds(4); SetShown(true,true); }
+    public void Hold() { holdUntil=DateTime.UtcNow.AddMilliseconds(350); SetShown(true,true); }
     public void RevealForTest() { holdUntil=DateTime.UtcNow.AddSeconds(30); SetShown(true,true); }
     void Update()
     {
@@ -41,21 +41,21 @@ internal sealed class BottomBarController : IDisposable
         bool over=shown && (new Rect(dock.Left-8,dockTop-8,dock.Width+16,dock.Height+40).Contains(point) || point.X>=tray.Left-8 && point.Y>=trayTop-10 && point.Y<=screen.Bottom);
         var gui=new GUI { Size=Marshal.SizeOf<GUI>() }; bool menu=GetGUIThreadInfo(0,ref gui) && (gui.Flags&0x1C)!=0 || MenuOpen(dock) || MenuOpen(tray);
         bool overflow=Visible("NotifyIconOverflowWindow") || Visible("TopLevelWindowForOverflowXamlIsland");
-        bool desired=!autoHide() || desktop || bottom || over || menu || overflow || DateTime.UtcNow<holdUntil;
+        bool desired=!autoHide() || desktop || (bottom && desktop) || (over && (desktop || pid==Environment.ProcessId)) || menu || overflow || DateTime.UtcNow<holdUntil;
         if(desired) { leaveAt=DateTime.MinValue; SetShown(true,!dock.Topmost); }
-        else { if(leaveAt==DateTime.MinValue) leaveAt=DateTime.UtcNow; if((DateTime.UtcNow-leaveAt).TotalMilliseconds>600) SetShown(false); }
+        else { if(leaveAt==DateTime.MinValue) leaveAt=DateTime.UtcNow; if((DateTime.UtcNow-leaveAt).TotalMilliseconds>120) SetShown(false); }
     }
     void SetShown(bool value,bool force=false)
     {
         if(value==shown && !force) return;
         shown=value;
-        foreach(var w in new[] { dock,tray })
+        foreach(var w in new[] { dock })
         {
             double target=value?(w==dock?dockTop:trayTop):SystemParameters.PrimaryScreenHeight-2;
             w.Topmost=value;
-            w.BeginAnimation(Window.TopProperty,new DoubleAnimation(w.Top,target,TimeSpan.FromMilliseconds(180)) { EasingFunction=new CubicEase { EasingMode=EasingMode.EaseOut }, FillBehavior=FillBehavior.HoldEnd });
+            w.BeginAnimation(Window.TopProperty,new DoubleAnimation(w.Top,target,TimeSpan.FromMilliseconds(110)) { EasingFunction=new CubicEase { EasingMode=EasingMode.EaseOut }, FillBehavior=FillBehavior.HoldEnd });
         }
-        shellVisibility(value);
+        shellVisibility(true);
     }
     static bool MenuOpen(DependencyObject root)
     {
