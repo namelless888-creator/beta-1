@@ -167,7 +167,9 @@ public partial class App : System.Windows.Application
                 var previewMenu=((Button)trayRow.Children[0]).ContextMenu; previewMenu.IsOpen=true; previewMenu.UpdateLayout(); PreviewCapture.Element(previewMenu,"menu-preview.png");
                 valid &= ((SolidColorBrush)previewMenu.Background).Color.R<80; previewMenu.IsOpen=false;
                 OpenVolume(); valid &= volumeWindow?.IsVisible==true; volumeWindow?.Close();
-                var drawerTest=new SideDrawer(panels.First(w=>w.Title.EndsWith("Папки")),"Папки",330); drawerTest.Close(); panels.First(w=>w.Title.EndsWith("Папки")).Show();
+                var drawerPanel=panels.First(w=>w.Title.EndsWith("Папки")); var drawerTest=new SideDrawer(drawerPanel,"Папки",330);
+                valid &= Math.Abs(drawerTest.TabTop-(drawerPanel.Top+(drawerPanel.Height-76)/2))<2;
+                drawerTest.Toggle(); drawerTest.Toggle(); drawerTest.Close(); panels.First(w=>w.Title.EndsWith("Папки")).Show();
                 bottomBar?.RevealForTest(); valid &= panels.First(w=>w.Title.EndsWith("Док")).Topmost;
                 Shutdown(valid?0:3); };
             check.Start();
@@ -260,6 +262,11 @@ public partial class App : System.Windows.Application
         row.Children.Add(info); col.Children.Add(row); progress.Margin=new Thickness(0,12,0,0); progress.Foreground=Brush("#54E0DA"); col.Children.Add(progress);
         Panel("Музыка", .016,.255,350,168,col);
     }
+    static BitmapSource MusicPlaceholder()
+    {
+        var tile=new Border { Width=66,Height=66,CornerRadius=new CornerRadius(12),Background=Brush("#284B40"),Child=new TextBlock { Text="\uE8D6",FontFamily=new FontFamily("Segoe MDL2 Assets"),FontSize=30,Foreground=Brush("#64E4DA"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center } };
+        tile.Measure(new Size(66,66)); tile.Arrange(new Rect(0,0,66,66)); var bitmap=new RenderTargetBitmap(66,66,96,96,PixelFormats.Pbgra32); bitmap.Render(tile); bitmap.Freeze(); return bitmap;
+    }
     async void ControlMusic(int command)
     {
         try { media ??= await GlobalSystemMediaTransportControlsSessionManager.RequestAsync(); var session=media.GetCurrentSession(); if(session==null) { artist.Text="Откройте музыкальный проигрыватель"; return; } bool accepted=command==0?await session.TrySkipPreviousAsync():command==2?await session.TrySkipNextAsync():await session.TryTogglePlayPauseAsync(); if(!accepted) artist.Text="Проигрыватель не поддерживает эту команду"; UpdateMedia(); } catch { artist.Text="Не удалось управлять проигрывателем"; }
@@ -272,7 +279,7 @@ public partial class App : System.Windows.Application
         {
             media ??= await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
             var session=media.GetCurrentSession();
-            if(session==null) { track.Text="Музыка"; artist.Text="Открой проигрыватель"; artwork.Source=null; progress.Value=0; return; }
+            if(session==null) { track.Text="Музыка"; artist.Text="Открой проигрыватель"; artwork.Source=MusicPlaceholder(); progress.Value=0; return; }
             var props=await session.TryGetMediaPropertiesAsync();
             if(playButton?.Content is TextBlock glyph) glyph.Text=session.GetPlaybackInfo().PlaybackStatus==GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing?"\uE769":"\uE768";
             bool changed=track.Text!=props.Title;
@@ -281,7 +288,7 @@ public partial class App : System.Windows.Application
             progress.Maximum=Math.Max(1,(timeline.EndTime-timeline.StartTime).TotalSeconds); progress.Value=Math.Max(0,(timeline.Position-timeline.StartTime).TotalSeconds);
             if(changed)
             {
-                artwork.Source=null;
+                artwork.Source=MusicPlaceholder();
                 if(props.Thumbnail!=null)
                 {
                     using var stream=await props.Thumbnail.OpenReadAsync();
@@ -334,7 +341,7 @@ public partial class App : System.Windows.Application
     void CreateFolders()
     {
         var col=new Grid(); col.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto }); col.RowDefinitions.Add(new RowDefinition());
-        col.Children.Add(new TextBlock { Text="Папки", FontSize=20, Margin=new Thickness(0,0,0,12) });
+        var folderTitle=new StackPanel { Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,0,12) }; folderTitle.Children.Add(new TextBlock { Text="\uE8B7",FontFamily=new FontFamily("Segoe MDL2 Assets"),FontSize=21,Foreground=Brush("#64E4DA"),Margin=new Thickness(0,0,10,0) }); folderTitle.Children.Add(Label("Папки",20)); col.Children.Add(folderTitle);
         var scroll=new ScrollViewer { Content=folderGrid, VerticalScrollBarVisibility=ScrollBarVisibility.Auto, HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled }; Grid.SetRow(scroll,1); col.Children.Add(scroll);
         Panel("Папки",-1,.5,AppPanelWidth,260,col); RefreshFolders();
     }
@@ -348,7 +355,7 @@ public partial class App : System.Windows.Application
         dock.Orientation=Orientation.Horizontal; dock.HorizontalAlignment=HorizontalAlignment.Center;
         RefreshDock(); Panel("Док",.5,-1,DockWidth,prefs.DockIconSize+38,dock);
     }
-    double DockScale => Math.Min(EffectiveScale,Math.Max(220,DesktopArea.Width-2*(nativeReserve*EffectiveScale+40))/Math.Max(1,DockWidth));
+    double DockScale => Math.Min(EffectiveScale,Math.Max(160,DesktopArea.Width-2*(nativeReserve*EffectiveScale+40))/Math.Max(1,DockWidth));
     double DockWidth => dock.Children.Count*(prefs.DockIconSize+18)+26;
     void RefreshDock()
     {
@@ -416,6 +423,15 @@ public partial class App : System.Windows.Application
             var point=new Point(area.Left,area.Top); if(matrix.HasValue) point=matrix.Value.Transform(point);
             trayWindow.Left=Math.Max(0,point.X-trayWindow.Width-8); trayWindow.Top=DesktopArea.Height-trayWindow.Height-2;
         }
+        // Bottom controls are anchored to actual tray geometry, never to old dragged positions.
+        trayWindow.Left=Math.Clamp(trayWindow.Left,0,DesktopArea.Width-trayWindow.Width-12);
+        if(!nativeTray) { trayWindow.Left=DesktopArea.Width-trayWindow.Width-16; trayWindow.Top=DesktopArea.Height-trayWindow.Height-8; }
+        double available=Math.Max(160,trayWindow.Left-32);
+        double scale=Math.Min(EffectiveScale,available/Math.Max(1,DockWidth));
+        ((Border)dockWindow.Content).LayoutTransform=new ScaleTransform(scale,scale);
+        dockWindow.Width=DockWidth*scale; dockWindow.Height=(prefs.DockIconSize+38)*scale;
+        dockWindow.Left=Math.Max(12,Math.Min((DesktopArea.Width-dockWindow.Width)/2,trayWindow.Left-dockWindow.Width-16));
+        dockWindow.Top=DesktopArea.Height-dockWindow.Height-12;
         bottomBar?.Relayout();
     }
     void UpdateShellTray(bool show)
@@ -429,12 +445,12 @@ public partial class App : System.Windows.Application
         if(nativeTray && NativeTray.Find(out _,out var area,out _))
         {
             var matrix=PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice;
-            nativeReserve=area.Width*(matrix?.M11??1)+70;
+            nativeReserve=area.Width*(matrix?.M11??1)+280;
         }
-        else nativeReserve=315;
+        else nativeReserve=280;
         var row=(StackPanel)((Border)window.Content).Child;
-        for(int i=1;i<row.Children.Count;i++) row.Children[i].Visibility=nativeTray?Visibility.Collapsed:Visibility.Visible;
-        if(old!=nativeTray || Math.Abs(oldReserve-nativeReserve)>1) { window.Width=(nativeTray?62:315)*EffectiveScale; RefreshDock(); RepositionBottom(); }
+        for(int i=1;i<row.Children.Count;i++) row.Children[i].Visibility=Visibility.Visible;
+        if(old!=nativeTray || Math.Abs(oldReserve-nativeReserve)>1) { window.Width=260*EffectiveScale; RefreshDock(); RepositionBottom(); }
     }
     void OpenNetwork() { bottomBar?.Hold(); ShellActions.Network(); }
     void OpenVolume()
@@ -496,7 +512,7 @@ public partial class App : System.Windows.Application
         if(settings!=null) { settings.WindowState=WindowState.Normal; settings.Activate(); return; }
         var body=new StackPanel { Margin=new Thickness(28) };
         body.Children.Add(Label("Бета 1 · Панель управления",25));
-        body.Children.Add(new TextBlock { Text="Версия 0.5.1", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
+        body.Children.Add(new TextBlock { Text="Версия 0.5.2", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
         body.Children.Add(new TextBlock { Text="Внешний вид и рабочий стол", Opacity=.7, Margin=new Thickness(0,6,0,22) });
         void Range(string name,double min,double max,double value,Action<double> update,bool integer=false)
         {
