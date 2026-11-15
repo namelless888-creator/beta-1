@@ -73,7 +73,14 @@ public partial class App : System.Windows.Application
         tray.DoubleClick += (_, _) => Dispatcher.Invoke(OpenSettings);
         timer.Interval = TimeSpan.FromSeconds(1); timer.Tick += (_, _) => Tick(); timer.Start(); Tick();
         SystemEvents.DisplaySettingsChanged += DisplayChanged;
-        DispatcherUnhandledException += (_, args) => { Forms.MessageBox.Show(args.Exception.Message, "Бета 1"); args.Handled = true; };
+        bool smoke = e.Args.Contains("--smoke-test");
+        DispatcherUnhandledException += (_, args) => { if(smoke) { Shutdown(2); return; } Forms.MessageBox.Show(args.Exception.Message, "Бета 1"); args.Handled = true; };
+        if(smoke)
+        {
+            var check = new DispatcherTimer { Interval=TimeSpan.FromSeconds(3) };
+            check.Tick += (_, _) => { check.Stop(); Shutdown(panels.Count==7 && panels.All(w => w.IsVisible && new WindowInteropHelper(w).Handle!=IntPtr.Zero) ? 0 : 3); };
+            check.Start();
+        }
     }
     void Save() { Directory.CreateDirectory(Path.GetDirectoryName(storage)!); File.WriteAllText(storage, JsonSerializer.Serialize(prefs, new JsonSerializerOptions { WriteIndented = true })); }
     static Brush Brush(string hex) => (Brush)new BrushConverter().ConvertFromString(hex)!;

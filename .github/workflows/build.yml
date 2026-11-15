@@ -9,6 +9,12 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet publish Beta1.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+      - name: Check desktop panels start on Windows
+        shell: pwsh
+        run: |
+          $app = Start-Process ./publish/Beta1.exe -ArgumentList '--smoke-test' -PassThru
+          if (-not $app.WaitForExit(30000)) { $app.Kill(); throw 'Application did not finish startup check' }
+          if ($app.ExitCode -ne 0) { throw "Application startup failed: $($app.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: Beta1-Windows-x64
