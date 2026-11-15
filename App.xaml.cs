@@ -24,6 +24,7 @@ public sealed class Preferences
     public double PanelScale { get; set; } = 1;
     public int AppIconSize { get; set; } = 44;
     public int DockIconSize { get; set; } = 36;
+    public bool AutoHideDock { get; set; } = true;
     public bool HideTaskbar { get; set; } = true;
     public bool HideDesktopIcons { get; set; } = true;
     public bool ShowIconNames { get; set; } = true;
@@ -39,6 +40,13 @@ public partial class App : System.Windows.Application
     readonly List<Shortcut> desktopFolders = new();
     readonly List<Shortcut> taskbarPins = new();
     bool exactPins;
+    readonly List<WindowTask> running=new();
+    BottomBarController? bottomBar;
+    bool nativeTray;
+    double nativeReserve=315;
+    Window? volumeWindow;
+    IntPtr previousForeground;
+    string taskSignature="";
     readonly List<FileSystemWatcher> watchers = new();
     DispatcherTimer refreshTimer = new() { Interval=TimeSpan.FromMilliseconds(800) };
     int syncTicks;
@@ -110,13 +118,16 @@ public partial class App : System.Windows.Application
             if(recoveryReady)
             {
                 if(prefs.HideDesktopIcons) desktop.HideDesktopIcons();
-                if(prefs.HideTaskbar) desktop.HideTaskbars();
+
             }
             else { prefs.HideTaskbar=false; prefs.HideDesktopIcons=false; }
             CreateSettingsShortcut();
         }
         using(var iconStream=GetResourceStream(new Uri("pack://application:,,,/Assets/beta1.ico")).Stream) brandIcon=new System.Drawing.Icon(iconStream);
+        running.AddRange(WindowTasks.Read());
         CreateTop(); CreateClock(); CreateMusic(); CreateApps(); CreateFolders(); CreateDock(); CreateTrayPanel();
+        if(!smoke) UpdateShellTray(true);
+        bottomBar=new BottomBarController(panels.First(w=>w.Title.EndsWith("Док")),panels.First(w=>w.Title.EndsWith("Состояние")),()=>prefs.AutoHideDock,UpdateShellTray,!smoke);
         tray = new Forms.NotifyIcon { Icon = brandIcon, Text = "Бета 1 — рабочий стол", Visible = true };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Показать / скрыть панели", null, (_, _) => Dispatcher.Invoke(Toggle));
@@ -153,6 +164,8 @@ public partial class App : System.Windows.Application
                 var trayPanel=panels.First(w=>w.Title.EndsWith("Состояние")); var trayRow=(StackPanel)((Border)trayPanel.Content).Child;
                 var previewMenu=((Button)trayRow.Children[0]).ContextMenu; previewMenu.IsOpen=true; previewMenu.UpdateLayout(); PreviewCapture.Element(previewMenu,"menu-preview.png");
                 valid &= ((SolidColorBrush)previewMenu.Background).Color.R<80; previewMenu.IsOpen=false;
+                OpenVolume(); valid &= volumeWindow?.IsVisible==true; volumeWindow?.Close();
+                bottomBar?.RevealForTest(); valid &= panels.First(w=>w.Title.EndsWith("Док")).Topmost;
                 Shutdown(valid?0:3); };
             check.Start();
         }
@@ -187,10 +200,10 @@ public partial class App : System.Windows.Application
             if(Keyboard.Modifiers==ModifierKeys.Alt) { w.DragMove(); ev.Handled=true; prefs.Positions[id]=new[] { w.Left,w.Top }; Save(); }
         };
         w.PreviewKeyDown += (_,ev) => { if(ev.Key==Key.Escape) w.Hide(); };
-        w.Deactivated += (_,_) => Lower(w);
-        w.SourceInitialized += (_,_) => { var h=new WindowInteropHelper(w).Handle; SetWindowLong(h,-20,GetWindowLong(h,-20)|0x80); var owner=FindWindow("Progman",null); if(owner!=IntPtr.Zero) SetWindowLongPtr(h,-8,owner); };
+        w.Deactivated += (_,_) => { if(id is not ("Док" or "Состояние")) Lower(w); };
+        w.SourceInitialized += (_,_) => { var h=new WindowInteropHelper(w).Handle; SetWindowLong(h,-20,GetWindowLong(h,-20)|0x80); var owner=id is "Док" or "Состояние" ? IntPtr.Zero : FindWindow("Progman",null); if(owner!=IntPtr.Zero) SetWindowLongPtr(h,-8,owner); };
         TextOptions.SetTextFormattingMode(w,TextFormattingMode.Display);
-        panels.Add(w); Position(w); w.Show(); Lower(w); return w;
+        panels.Add(w); Position(w); w.Show(); if(id is not ("Док" or "Состояние")) Lower(w); return w;
     }
     Brush PanelBackground() => new LinearGradientBrush(Color.FromArgb((byte)(255*prefs.Opacity),38,47,39),Color.FromArgb((byte)(255*prefs.Opacity),22,29,25),90);
     static void Lower(Window w) { if(w.IsVisible) SetWindowPos(new WindowInteropHelper(w).Handle,new IntPtr(1),0,0,0,0,0x13); }
@@ -217,8 +230,8 @@ public partial class App : System.Windows.Application
         row.Children.Add(left);
         topDate.HorizontalAlignment=HorizontalAlignment.Center; Grid.SetColumn(topDate,1); row.Children.Add(topDate);
         var right=new StackPanel { Orientation=Orientation.Horizontal }; Grid.SetColumn(right,2);
-        right.Children.Add(Symbol("\uE701",()=>Launch("ms-settings:network"),"Сеть",18));
-        right.Children.Add(Symbol("\uE767",()=>Launch("ms-settings:sound"),"Звук",18));
+        right.Children.Add(Symbol("\uE701",OpenNetwork,"Сеть",18));
+        right.Children.Add(Symbol("\uE767",OpenVolume,"Звук",18));
         right.Children.Add(Symbol("\uE713",OpenSettings,"Панель управления")); row.Children.Add(right);
         Panel("Верхняя панель",.0125,.012,(DesktopArea.Width-48*EffectiveScale)/EffectiveScale,58,row);
     }
@@ -327,18 +340,108 @@ public partial class App : System.Windows.Application
         dock.Orientation=Orientation.Horizontal; dock.HorizontalAlignment=HorizontalAlignment.Center;
         RefreshDock(); Panel("Док",.5,-1,DockWidth,prefs.DockIconSize+38,dock);
     }
-    double DockScale => Math.Min(EffectiveScale,Math.Max(220,DesktopArea.Width-2*(315*EffectiveScale+40))/Math.Max(1,DockWidth));
+    double DockScale => Math.Min(EffectiveScale,Math.Max(220,DesktopArea.Width-2*(nativeReserve*EffectiveScale+40))/Math.Max(1,DockWidth));
     double DockWidth => dock.Children.Count*(prefs.DockIconSize+18)+26;
     void RefreshDock()
     {
         dock.Children.Clear();
         int size=prefs.DockIconSize;
-        var start=Button("Пуск",()=>MediaKey(0x5B)); start.Content=WindowsMark(size); start.Padding=new Thickness(9,8,9,8); dock.Children.Add(start);
-        var find=Symbol("\uE721",()=> { var w=panels.First(p=>p.Title.EndsWith("Приложения")); w.Show(); w.Activate(); search.Focus(); },"Найти приложение",size); find.Padding=new Thickness(9,8,9,8); dock.Children.Add(find);
+        var start=Button("Пуск",()=> { bottomBar?.Hold(); ShellActions.Start(); }); start.Content=WindowsMark(size); start.Padding=new Thickness(9,8,9,8); dock.Children.Add(start);
+        var find=Symbol("\uE721",()=> { bottomBar?.Hold(); ShellActions.Search(); },"Поиск Windows",size); find.Padding=new Thickness(9,8,9,8); dock.Children.Add(find);
         
-        foreach(var a in taskbarPins) { var b=Button(a.Name,()=>Launch(a.Path)); b.Content=Icon(a.Path,size); b.Padding=new Thickness(9,8,9,8); dock.Children.Add(b); }
+        var represented=new HashSet<IntPtr>();
+        foreach(var a in taskbarPins)
+        {
+            var windows=running.Where(w=>WindowTasks.Matches(a,w)).ToList(); foreach(var w in windows) represented.Add(w.Handle);
+            AddDockItem(a.Name,Icon(a.Path,size),windows,()=>Launch(a.Path),true);
+        }
+        foreach(var w in running.Where(w=>!represented.Contains(w.Handle)))
+        {
+            UIElement icon=w.Icon!=null?new System.Windows.Controls.Image { Source=w.Icon,Width=size,Height=size }:Icon(w.Executable,size);
+            AddDockItem(w.Title,icon,new List<WindowTask> { w },()=>WindowTasks.Activate(w.Handle));
+        }
         var window=panels.FirstOrDefault(p=>p.Title.EndsWith("Док"));
         if(window!=null) { ((Border)window.Content).LayoutTransform=new ScaleTransform(DockScale,DockScale); window.Width=DockWidth*DockScale; window.Height=(size+38)*DockScale; Position(window); }
+    }
+    void AddDockItem(string title,UIElement icon,List<WindowTask> windows,Action launch,bool canLaunch=false)
+    {
+        var stack=new Grid(); stack.RowDefinitions.Add(new RowDefinition()); stack.RowDefinitions.Add(new RowDefinition { Height=new GridLength(6) }); stack.Children.Add(icon);
+        var mark=new Border { Height=3,Width=windows.Any(w=>w.Handle==previousForeground)?22:windows.Count>1?16:6, CornerRadius=new CornerRadius(2), Background=windows.Any(w=>w.Handle==previousForeground)?Brush("#64E4DA"):Brush("#C5D1C9"), Visibility=windows.Count>0?Visibility.Visible:Visibility.Hidden, Margin=new Thickness(0,3,0,0) }; Grid.SetRow(mark,1); stack.Children.Add(mark);
+        var button=Button(title,()=> { bottomBar?.Hold(); if(windows.Count==0) launch(); else if(windows.Count==1) ActivateTask(windows[0]); else { buttonMenu(windows).IsOpen=true; } });
+        button.Content=stack; button.Padding=new Thickness(9,5,9,5);
+        var menu=buttonMenu(windows); if(canLaunch) { var newWindow=new MenuItem { Header=windows.Count>0?"Открыть новый экземпляр":"Запустить" }; newWindow.Click+=(_,_)=>launch(); menu.Items.Add(newWindow); } button.ContextMenu=menu; dock.Children.Add(button);
+        ContextMenu buttonMenu(List<WindowTask> tasks)
+        {
+            var result=new ContextMenu(); foreach(var task in tasks) { var entry=new MenuItem { Header=task.Title,MaxWidth=420 }; entry.Click+=(_,_)=> { WindowTasks.Activate(task.Handle,false); bottomBar?.Hold(); }; result.Items.Add(entry); } return result;
+        }
+    }
+    void ActivateTask(WindowTask task)
+    {
+        if(task.Handle==(bottomBar?.LastExternalForeground??previousForeground) && !WindowTasks.IsIconic(task.Handle)) WindowTasks.Minimize(task.Handle);
+        else WindowTasks.Activate(task.Handle,false);
+    }
+    void RefreshRunning()
+    {
+        var current=WindowTasks.Read(); var foreground=WindowTasks.Foreground;
+        string signature=string.Join("|",current.Select(w=>$"{w.Handle}:{w.Title}"))+":"+foreground;
+        if(signature==taskSignature) return;
+        taskSignature=signature; running.Clear(); running.AddRange(current); if(current.Any(w=>w.Handle==foreground)) previousForeground=foreground;
+        RefreshDock(); RepositionBottom();
+    }
+    void RepositionBottom()
+    {
+        var dockWindow=panels.FirstOrDefault(w=>w.Title.EndsWith("Док")); var trayWindow=panels.FirstOrDefault(w=>w.Title.EndsWith("Состояние"));
+        if(dockWindow==null || trayWindow==null) return;
+        dockWindow.BeginAnimation(Window.TopProperty,null); trayWindow.BeginAnimation(Window.TopProperty,null);
+        Position(dockWindow); Position(trayWindow);
+        if(nativeTray && NativeTray.Find(out _,out var area,out _))
+        {
+            var matrix=PresentationSource.FromVisual(trayWindow)?.CompositionTarget?.TransformFromDevice;
+            var point=new Point(area.Left,area.Top); if(matrix.HasValue) point=matrix.Value.Transform(point);
+            trayWindow.Left=Math.Max(0,point.X-trayWindow.Width-8); trayWindow.Top=DesktopArea.Height-trayWindow.Height-2;
+        }
+        bottomBar?.Relayout();
+    }
+    void UpdateShellTray(bool show)
+    {
+        if(smoke) return;
+        bool old=nativeTray; double oldReserve=nativeReserve;
+        nativeTray=prefs.HideTaskbar && desktop.DisplayNativeTray(show,out _);
+        if(!prefs.HideTaskbar) desktop.RestoreTaskbars();
+        else if(!nativeTray) desktop.HideTaskbars();
+        var window=panels.FirstOrDefault(w=>w.Title.EndsWith("Состояние")); if(window==null) return;
+        if(nativeTray && NativeTray.Find(out _,out var area,out _))
+        {
+            var matrix=PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice;
+            nativeReserve=area.Width*(matrix?.M11??1)+70;
+        }
+        else nativeReserve=315;
+        var row=(StackPanel)((Border)window.Content).Child;
+        for(int i=1;i<row.Children.Count;i++) row.Children[i].Visibility=nativeTray?Visibility.Collapsed:Visibility.Visible;
+        if(old!=nativeTray || Math.Abs(oldReserve-nativeReserve)>1) { window.Width=(nativeTray?62:315)*EffectiveScale; RefreshDock(); RepositionBottom(); }
+    }
+    void OpenNetwork() { bottomBar?.Hold(); ShellActions.Network(); }
+    void OpenVolume()
+    {
+        bottomBar?.Hold();
+        if(volumeWindow!=null) { volumeWindow.Close(); return; }
+        var body=new StackPanel { Margin=new Thickness(20) }; body.Children.Add(Label("Громкость",20));
+        AudioLevel? audio=null; DispatcherTimer? poll=null;
+        try
+        {
+            audio=new AudioLevel(); var value=Label(audio.Level+"%",15); value.Margin=new Thickness(0,14,0,8); body.Children.Add(value);
+            var slider=new Slider { Minimum=0,Maximum=100,Value=audio.Level,TickFrequency=1,IsSnapToTickEnabled=true,Margin=new Thickness(0,4,0,12) }; body.Children.Add(slider);
+            bool sync=false; slider.ValueChanged+=(_,_)=> { if(!sync) { audio.Level=slider.Value; value.Text=$"{slider.Value:0}%"; } };
+            var mute=Button(audio.Muted?"Включить звук":"Выключить звук",()=> { audio.Muted=!audio.Muted; }); body.Children.Add(mute);
+            poll=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(350) }; poll.Tick+=(_,_)=> { try { sync=true; if(!slider.IsMouseCaptureWithin) slider.Value=audio.Level; value.Text=$"{slider.Value:0}%"; mute.Content=audio.Muted?"Включить звук":"Выключить звук"; } catch { poll.Stop(); } finally { sync=false; } }; poll.Start();
+        }
+        catch { audio?.Dispose(); audio=null; body.Children.Add(new TextBlock { Text="Устройство вывода звука недоступно",TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,16,0,16) }); }
+        body.Children.Add(Button("Устройства звука",()=>Launch("ms-settings:sound")));
+        volumeWindow=new Window { Title="Бета 1 — Громкость", Width=340,SizeToContent=SizeToContent.Height,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,AllowsTransparency=true,Background=Brushes.Transparent,ShowInTaskbar=false,Topmost=true,Content=new Border { Background=Brush("#202A26"),CornerRadius=new CornerRadius(16),BorderBrush=Brush("#84988C"),BorderThickness=new Thickness(1),Child=body } };
+        volumeWindow.Loaded+=(_,_)=> { volumeWindow.Left=DesktopArea.Width-volumeWindow.ActualWidth-24; volumeWindow.Top=DesktopArea.Height-volumeWindow.ActualHeight-110; };
+        volumeWindow.PreviewKeyDown+=(_,e)=> { if(e.Key==Key.Escape) volumeWindow.Close(); };
+        volumeWindow.Deactivated+=(_,_)=>volumeWindow?.Close();
+        volumeWindow.Closed+=(_,_)=> { poll?.Stop(); audio?.Dispose(); volumeWindow=null; }; volumeWindow.Show(); volumeWindow.Activate();
     }
     static UIElement WindowsMark(int size)
     {
@@ -350,17 +453,17 @@ public partial class App : System.Windows.Application
         var row=new StackPanel { Orientation=Orientation.Horizontal, VerticalAlignment=VerticalAlignment.Center };
         var beta=Button("Бета 1",OpenSettings,"Бета 1 — настройки"); beta.Content=Icon(Environment.ProcessPath!,24);
         var menu=new ContextMenu();
-        foreach(var item in new[] { ("Настройки",(Action)OpenSettings),("Корзина",(Action)(()=>Launch("shell:RecycleBinFolder"))),("Этот компьютер",(Action)(()=>Launch("shell:MyComputerFolder"))),("Показать / скрыть панели",(Action)Toggle),("Вернуть панель задач Windows",(Action)(()=> { prefs.HideTaskbar=false; desktop.RestoreTaskbars(); Save(); })),("Выход",(Action)(()=>Shutdown())) }) { var entry=new MenuItem { Header=item.Item1 }; entry.Click+=(_,_)=>item.Item2(); menu.Items.Add(entry); }
+        foreach(var item in new[] { ("Настройки",(Action)OpenSettings),("Корзина",(Action)(()=>Launch("shell:RecycleBinFolder"))),("Этот компьютер",(Action)(()=>Launch("shell:MyComputerFolder"))),("Показать / скрыть панели",(Action)Toggle),("Вернуть панель задач Windows",(Action)(()=> { prefs.HideTaskbar=false; UpdateShellTray(true); Save(); })),("Выход",(Action)(()=>Shutdown())) }) { var entry=new MenuItem { Header=item.Item1 }; entry.Click+=(_,_)=>item.Item2(); menu.Items.Add(entry); }
         beta.ContextMenu=menu; row.Children.Add(beta);
-        row.Children.Add(Symbol("\uE701",()=>Launch("ms-settings:network"),"Сеть",18));
-        row.Children.Add(Symbol("\uE767",()=>Launch("ms-settings:sound"),"Громкость",18));
+        row.Children.Add(Symbol("\uE701",OpenNetwork,"Сеть",18));
+        row.Children.Add(Symbol("\uE767",OpenVolume,"Громкость",18));
         status.FontSize=13; row.Children.Add(status);
         Panel("Состояние",-1,-1,315,58,row);
     }
     void Tick()
     {
         UpdateMedia();
-        if(!smoke && prefs.HideTaskbar) desktop.HideTaskbars();
+        if(!smoke) { RefreshRunning(); UpdateShellTray(bottomBar?.Shown??true); }
         if(!smoke && prefs.HideDesktopIcons) desktop.HideDesktopIcons();
         if(!smoke && ++syncTicks%15==0) { taskbarPins.Clear(); taskbarPins.AddRange(ShellCatalog.Taskbar(out exactPins)); RefreshDock(); }
         if(openSettingsEvent?.WaitOne(0)==true) OpenSettings();
@@ -375,7 +478,7 @@ public partial class App : System.Windows.Application
         if(settings!=null) { settings.WindowState=WindowState.Normal; settings.Activate(); return; }
         var body=new StackPanel { Margin=new Thickness(28) };
         body.Children.Add(Label("Бета 1 · Панель управления",25));
-        body.Children.Add(new TextBlock { Text="Версия 0.3.0", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
+        body.Children.Add(new TextBlock { Text="Версия 0.4.0", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
         body.Children.Add(new TextBlock { Text="Внешний вид и рабочий стол", Opacity=.7, Margin=new Thickness(0,6,0,22) });
         void Range(string name,double min,double max,double value,Action<double> update,bool integer=false)
         {
@@ -394,9 +497,11 @@ public partial class App : System.Windows.Application
         Range("Размер иконок дока",24,64,prefs.DockIconSize,v=>prefs.DockIconSize=(int)v,true);
         Range("Плотность фона",.9,1,prefs.Opacity,v=>prefs.Opacity=v);
         Check("Показывать названия приложений",prefs.ShowIconNames,v=> { prefs.ShowIconNames=v; RefreshApps(); });
-        Check("Скрывать стандартную панель задач Windows",prefs.HideTaskbar,v=> { prefs.HideTaskbar=v; if(v) desktop.HideTaskbars(); else desktop.RestoreTaskbars(); });
+        Check("Поднимать док при наведении к нижнему краю",prefs.AutoHideDock,v=>prefs.AutoHideDock=v);
+        Check("Использовать док Бета 1 и живой трей Windows",prefs.HideTaskbar,v=> { prefs.HideTaskbar=v; UpdateShellTray(true); });
         Check("Скрывать значки рабочего стола Windows",prefs.HideDesktopIcons,v=> { prefs.HideDesktopIcons=v; if(v) desktop.HideDesktopIcons(); else desktop.RestoreDesktopIcons(); });
         body.Children.Add(new TextBlock { Text="Файлы и ярлыки остаются на своих местах. Скрывается только отображение значков Windows; при выходе оно восстанавливается.", TextWrapping=TextWrapping.Wrap, Foreground=Brush("#CCD6CF"), Margin=new Thickness(0,0,0,12) });
+        if(!nativeTray && prefs.HideTaskbar && !smoke) body.Children.Add(new TextBlock { Text="Эта версия Explorer не предоставила область трея. Верните штатную панель задач кнопкой в меню Бета 1, чтобы открыть все значки уведомлений.",TextWrapping=TextWrapping.Wrap,Foreground=Brush("#E5CC91"),Margin=new Thickness(0,8,0,12) });
         bool autostart;
         using(var key=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) autostart=key?.GetValue("Beta1")!=null;
         Check("Запускать при входе в Windows",autostart,v=> { using var key=Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"); if(v) key.SetValue("Beta1","\""+Environment.ProcessPath+"\""); else key.DeleteValue("Beta1",false); });
@@ -423,7 +528,7 @@ public partial class App : System.Windows.Application
             border.LayoutTransform=new ScaleTransform(EffectiveScale,EffectiveScale);
             w.Width=spec[2]*EffectiveScale; w.Height=spec[3]*EffectiveScale;
         }
-        RefreshApps(); RefreshFolders(); RefreshDock(); Reposition();
+        RefreshApps(); RefreshFolders(); RefreshDock(); Reposition(); RepositionBottom();
     }
     void ReloadApps()
     {
@@ -474,7 +579,7 @@ public partial class App : System.Windows.Application
     static void MediaKey(byte key) { keybd_event(key,0,0,UIntPtr.Zero); keybd_event(key,0,2,UIntPtr.Zero); }
     protected override void OnExit(ExitEventArgs e)
     {
-        SystemEvents.DisplaySettingsChanged-=DisplayChanged; timer.Stop();
+        SystemEvents.DisplaySettingsChanged-=DisplayChanged; timer.Stop(); bottomBar?.Dispose(); volumeWindow?.Close();
         if(ownsInstance)
         {
             try { if(!smoke) desktop.RestoreAll(); Save(); } catch(Exception ex) { Trace.WriteLine(ex); }

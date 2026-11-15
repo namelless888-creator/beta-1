@@ -38,12 +38,26 @@ internal static class IntegrationChecks
             foreach(var pair in before) Require(File.Exists(pair.Key)&&File.ReadAllBytes(pair.Key).SequenceEqual(pair.Value),"files remain unchanged while hidden");
             new DesktopIntegration(Path.Combine(root,"state")).Recover(); Require(IsWindowVisible(list),"layer restored from journal");
             DestroyWindow(list); window.Close();
+            using var existing=new Forms.Form { Text="Beta1 existing-window fixture", ShowInTaskbar=true }; existing.Show(); Forms.Application.DoEvents();
+            var beforeStart=WindowTasks.Read(); Require(beforeStart.Any(w=>w.Handle==existing.Handle),"already-open window discovered");
+            var pinned=new Shortcut("Fixture",shortcut); Require(WindowTasks.Matches(pinned,beforeStart.First(w=>w.Handle==existing.Handle)),"running window matched to pinned shortcut target");
+            existing.WindowState=Forms.FormWindowState.Minimized; Forms.Application.DoEvents();
+            Require(WindowTasks.Read().Any(w=>w.Handle==existing.Handle),"minimized window remains in dock");
+            WindowTasks.Activate(existing.Handle,false); Forms.Application.DoEvents();
+            var saved=NativeTray.Capture(existing.Handle);
+            NativeTray.Clip(existing.Handle,new NativeTray.Rect { Right=100,Bottom=80 },new NativeTray.Rect { Right=300,Bottom=200 },true);
+            Require(GetWindowRgnBox(existing.Handle,out var clipped)>0 && clipped.Right==100,"native tray region can be clipped");
+            NativeTray.Restore(saved); Require(GetWindowRgnBox(existing.Handle,out _) == 0,"original region restored");
+            var closedHandle=existing.Handle; existing.Close(); Forms.Application.DoEvents();
+            Require(!WindowTasks.Read().Any(w=>w.Handle==closedHandle),"closed window removed");
             // Upgrade from 0.2 must restore formerly moved links without overwriting new files.
             var old=Path.Combine(root,"legacy.lnk"); File.WriteAllText(old,"old");
             var state=Path.Combine(root,"legacy"); Directory.CreateDirectory(state);
             File.WriteAllText(Path.Combine(state,"desktop-recovery.json"),JsonSerializer.Serialize(new DesktopIntegration.Journal { Links=new() { new(shortcut,old) } }));
             new DesktopIntegration(state).Recover();
             Require(File.Exists(shortcut)&&Directory.GetFiles(desktop,"Test (Бета 1 *).lnk").Length==1,"legacy migration preserves conflicts");
+            bool trayFound=NativeTray.Find(out _,out var trayArea,out _);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Existing and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\n");
             return 0;
         }
         catch(Exception ex) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "integration-error.txt"),ex.ToString()); return 4; }
@@ -51,6 +65,14 @@ internal static class IntegrationChecks
     }
     static byte[] Pixels(BitmapSource bitmap) { int stride=(bitmap.PixelWidth*bitmap.Format.BitsPerPixel+7)/8; var bytes=new byte[stride*bitmap.PixelHeight]; bitmap.CopyPixels(bytes,stride,0); return bytes; }
     static void Require(bool test,string name) { if(!test) throw new InvalidOperationException(name); }
+    static int GetWindowRgnBox(IntPtr window,out NativeTray.Rect box)
+    {
+        var region=CreateRectRgn(0,0,0,0); try { int status=GetWindowRgn(window,region); GetRgnBox(region,out box); return status; } finally { DeleteObject(region); }
+    }
+    [DllImport("user32.dll")] static extern int GetWindowRgn(IntPtr window,IntPtr region);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateRectRgn(int l,int t,int r,int b);
+    [DllImport("gdi32.dll")] static extern int GetRgnBox(IntPtr region,out NativeTray.Rect box);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr region);
     [StructLayout(LayoutKind.Sequential)] struct CommonControls { public uint Size,Classes; }
     [DllImport("comctl32.dll")] static extern bool InitCommonControlsEx(ref CommonControls controls);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);

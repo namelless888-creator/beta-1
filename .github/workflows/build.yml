@@ -15,6 +15,7 @@ jobs:
           $checks = Start-Process ./publish/Beta1.exe -ArgumentList '--integration-test' -PassThru
           if (-not $checks.WaitForExit(30000)) { $checks.Kill(); throw 'Recovery checks timed out' }
           if ($checks.ExitCode -ne 0) { Get-Content ./publish/integration-error.txt -ErrorAction SilentlyContinue; throw 'Integration checks failed' }
+          Get-Content ./publish/integration-report.txt -ErrorAction SilentlyContinue
           $app = Start-Process ./publish/Beta1.exe -ArgumentList '--smoke-test' -PassThru
           if (-not $app.WaitForExit(30000)) { $app.Kill(); throw 'Application did not finish startup check' }
           if ($app.ExitCode -ne 0) { Get-Content ./publish/smoke-error.txt -ErrorAction SilentlyContinue; throw "Application startup failed: $($app.ExitCode)" }

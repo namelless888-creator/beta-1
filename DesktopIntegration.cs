@@ -14,6 +14,7 @@ internal sealed class DesktopIntegration
     internal sealed class Journal
     {
         public List<MovedLink> Links { get; set; } = new();
+        public List<NativeTray.SavedRegion> TrayRegions { get; set; } = new();
         public List<long> IconLayers { get; set; } = new();
         public List<long> Taskbars { get; set; } = new();
     }
@@ -33,11 +34,11 @@ internal sealed class DesktopIntegration
         if(File.Exists(journalPath)) journal=JsonSerializer.Deserialize<Journal>(File.ReadAllText(journalPath))??new();
         RestoreAll();
     }
-    public void HideTaskbars()
+    public void HideTaskbars(IntPtr except=default)
     {
         EnumWindows((h,_) => {
             var name=new System.Text.StringBuilder(256); GetClassName(h,name,name.Capacity);
-            if(name.ToString() is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
+            if(h!=except && (name.ToString() is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd"))
             {
                 if(IsWindowVisible(h))
                 {
@@ -48,8 +49,16 @@ internal sealed class DesktopIntegration
             return true;
         },IntPtr.Zero);
     }
+    public bool DisplayNativeTray(bool visible,out NativeTray.Rect area)
+    {
+        if(!NativeTray.Find(out var h,out area,out var bar)) return false;
+        if(!journal.TrayRegions.Exists(r=>r.Handle==h.ToInt64())) { journal.TrayRegions.Add(NativeTray.Capture(h)); Save(); }
+        NativeTray.Clip(h,area,bar,visible); HideTaskbars(h); return true;
+    }
     public void RestoreTaskbars()
     {
+        foreach(var region in journal.TrayRegions) NativeTray.Restore(region);
+        journal.TrayRegions.Clear();
         foreach(var value in journal.Taskbars)
         {
             var handle=new IntPtr(value); var name=new System.Text.StringBuilder(256); GetClassName(handle,name,256);
