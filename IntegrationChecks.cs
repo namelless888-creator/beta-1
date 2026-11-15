@@ -26,13 +26,15 @@ internal static class IntegrationChecks
             Require(source!=null && fromLink!=null,"icons loaded");
             Require(Pixels(source!).SequenceEqual(Pixels(fromLink!)),"shortcut icon must equal original icon, without arrow overlay");
             var before=Directory.GetFiles(desktop).ToDictionary(p=>p,File.ReadAllBytes);
-            using var window=new Forms.Form { ShowInTaskbar=false }; using var list=new Forms.ListView { Dock=Forms.DockStyle.Fill }; window.Controls.Add(list); window.Show(); Forms.Application.DoEvents();
+            using var window=new Forms.Form { ShowInTaskbar=false }; window.Show(); Forms.Application.DoEvents();
+            var list=CreateWindowEx(0,"SysListView32","Beta1 test",0x50000000,0,0,200,200,window.Handle,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
+            Require(list!=IntPtr.Zero,"native list view created");
             var integration=new DesktopIntegration(Path.Combine(root,"state"));
-            Require(IsWindowVisible(list.Handle),"fixture icon layer initially visible");
-            integration.HideIconLayer(list.Handle); Require(!IsWindowVisible(list.Handle),"icon layer hidden");
+            Require(IsWindowVisible(list),"fixture icon layer initially visible");
+            integration.HideIconLayer(list); Require(!IsWindowVisible(list),"icon layer hidden");
             foreach(var pair in before) Require(File.Exists(pair.Key)&&File.ReadAllBytes(pair.Key).SequenceEqual(pair.Value),"files remain unchanged while hidden");
-            new DesktopIntegration(Path.Combine(root,"state")).Recover(); Require(IsWindowVisible(list.Handle),"layer restored from journal");
-            window.Close();
+            new DesktopIntegration(Path.Combine(root,"state")).Recover(); Require(IsWindowVisible(list),"layer restored from journal");
+            DestroyWindow(list); window.Close();
             // Upgrade from 0.2 must restore formerly moved links without overwriting new files.
             var old=Path.Combine(root,"legacy.lnk"); File.WriteAllText(old,"old");
             var state=Path.Combine(root,"legacy"); Directory.CreateDirectory(state);
@@ -46,5 +48,7 @@ internal static class IntegrationChecks
     }
     static byte[] Pixels(BitmapSource bitmap) { int stride=(bitmap.PixelWidth*bitmap.Format.BitsPerPixel+7)/8; var bytes=new byte[stride*bitmap.PixelHeight]; bitmap.CopyPixels(bytes,stride,0); return bytes; }
     static void Require(bool test,string name) { if(!test) throw new InvalidOperationException(name); }
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);
+    [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr handle);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr handle);
 }
