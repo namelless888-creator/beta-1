@@ -58,7 +58,19 @@ internal static class IntegrationChecks
             Require(File.Exists(shortcut)&&Directory.GetFiles(desktop,"Test (Бета 1 *).lnk").Length==1,"legacy migration preserves conflicts");
             ShellActions.Shortcut(0x11,0x1B); System.Threading.Thread.Sleep(1800); string startProcess=WindowTasks.ForegroundProcessName(); CaptureScreen("start-control.png"); ShellActions.Escape();
             System.Threading.Thread.Sleep(200); ShellActions.Shortcut(0x5B,0x53); System.Threading.Thread.Sleep(1800); string searchProcess=WindowTasks.ForegroundProcessName(); CaptureScreen("search-control.png"); ShellActions.Escape();
-            bool trayFound=NativeTray.Find(out _,out var trayArea,out _);
+            bool trayFound=NativeTray.Find(out var actualTaskbar,out var trayArea,out var taskbarArea);
+            if(trayFound)
+            {
+                var original=NativeTray.Capture(actualTaskbar);
+                try
+                {
+                    NativeTray.Clip(actualTaskbar,trayArea,taskbarArea,true);
+                    System.Threading.Thread.Sleep(250);
+                    Require(GetWindowRgnBox(actualTaskbar,out var nativeClip)>0 && nativeClip.Right-nativeClip.Left==trayArea.Width,"actual Explorer tray region applied");
+                    CaptureScreen("native-tray-control.png");
+                }
+                finally { NativeTray.Restore(original); }
+            }
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Existing and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\nStart foreground: {startProcess}\nSearch foreground: {searchProcess}\n");
             return 0;
         }

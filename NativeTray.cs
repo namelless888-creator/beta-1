@@ -26,7 +26,7 @@ internal static class NativeTray
             var element=AutomationElement.FromHandle(taskbar).FindFirst(TreeScope.Descendants,new PropertyCondition(AutomationElement.AutomationIdProperty,"SystemTray.SystemTrayFrame"));
             if(element!=null) { var r=element.Current.BoundingRectangle; if(!r.IsEmpty && r.Width>0) { tray=new Rect { Left=(int)r.Left,Top=(int)r.Top,Right=(int)r.Right,Bottom=(int)r.Bottom }; return true; } }
         }
-        catch(ElementNotAvailableException) { } catch(COMException) { }
+        catch(ElementNotAvailableException) { } catch(COMException) { } catch(ArgumentException) { } catch(InvalidOperationException) { }
         return false;
     }
     public static uint ProcessId(IntPtr h) { GetWindowThreadProcessId(h,out uint pid); return pid; }
