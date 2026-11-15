@@ -25,7 +25,7 @@ internal sealed class BottomBarController : IDisposable
         timer.Tick+=(_,_)=>Update(); if(start) timer.Start();
         dock.PreviewMouseDown+=(_,_)=>Hold(); tray.PreviewMouseDown+=(_,_)=>Hold();
     }
-    public void Relayout() { dock.BeginAnimation(Window.TopProperty,null); tray.BeginAnimation(Window.TopProperty,null); dockTop=dock.Top; trayTop=tray.Top; if(!shown) { dock.Top=SystemParameters.PrimaryScreenHeight-2; tray.Top=SystemParameters.PrimaryScreenHeight-2; } }
+    public void Relayout() { dock.BeginAnimation(Window.TopProperty,null); tray.BeginAnimation(Window.TopProperty,null); dockTop=dock.Top; trayTop=tray.Top; if(!shown) { dock.Top=SystemParameters.PrimaryScreenHeight-2; } }
     public void Hold() { holdUntil=DateTime.UtcNow.AddMilliseconds(350); SetShown(true,true); }
     public void RevealForTest() { holdUntil=DateTime.UtcNow.AddSeconds(30); SetShown(true,true); }
     void Update()
