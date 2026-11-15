@@ -91,9 +91,14 @@ public partial class App : System.Windows.Application
         DiscoverApps();
         if(!smoke)
         {
-            if(prefs.HideDuplicates) ImportDuplicates();
-            if(prefs.HideTaskbar) desktop.HideTaskbars();
-            try { Process.Start(new ProcessStartInfo(Environment.ProcessPath!,"--watch-parent "+Environment.ProcessId) { UseShellExecute=false, CreateNoWindow=true }); } catch { }
+            bool recoveryReady=false;
+            try { recoveryReady=Process.Start(new ProcessStartInfo(Environment.ProcessPath!,"--watch-parent "+Environment.ProcessId) { UseShellExecute=false, CreateNoWindow=true })!=null; } catch { }
+            if(recoveryReady)
+            {
+                if(prefs.HideDuplicates) ImportDuplicates();
+                if(prefs.HideTaskbar) desktop.HideTaskbars();
+            }
+            else { prefs.HideTaskbar=false; prefs.HideDuplicates=false; }
             CreateSettingsShortcut();
         }
         using(var iconStream=GetResourceStream(new Uri("pack://application:,,,/Assets/beta1.ico")).Stream) brandIcon=new System.Drawing.Icon(iconStream);
@@ -170,6 +175,7 @@ public partial class App : System.Windows.Application
         double margin=24*EffectiveScale;
         double left=spec[0]<0 ? a.Width-w.Width-margin : spec[0]==.5 ? (a.Width-w.Width)/2 : spec[0]*a.Width;
         double top=spec[1]<0 ? a.Height-w.Height-margin : spec[1]*a.Height;
+        if(name=="Музыка") { var clockWindow=panels.FirstOrDefault(p=>p.Title.EndsWith("Часы")); if(clockWindow!=null) top=clockWindow.Top+clockWindow.Height+16*EffectiveScale; }
         if(name=="Папки") { var appsWindow=panels.FirstOrDefault(p=>p.Title.EndsWith("Приложения")); if(appsWindow!=null) top=appsWindow.Top+appsWindow.Height+16*EffectiveScale; }
         w.Left=Math.Clamp(saved?.ElementAtOrDefault(0)??left,0,Math.Max(0,a.Width-w.Width));
         w.Top=Math.Clamp(saved?.ElementAtOrDefault(1)??top,0,Math.Max(0,a.Height-w.Height));
