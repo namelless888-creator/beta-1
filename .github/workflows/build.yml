@@ -12,6 +12,9 @@ jobs:
       - name: Check desktop panels start on Windows
         shell: pwsh
         run: |
+          $checks = Start-Process ./publish/Beta1.exe -ArgumentList '--integration-test' -PassThru
+          if (-not $checks.WaitForExit(30000)) { $checks.Kill(); throw 'Recovery checks timed out' }
+          if ($checks.ExitCode -ne 0) { throw 'Shortcut recovery checks failed' }
           $app = Start-Process ./publish/Beta1.exe -ArgumentList '--smoke-test' -PassThru
           if (-not $app.WaitForExit(30000)) { $app.Kill(); throw 'Application did not finish startup check' }
           if ($app.ExitCode -ne 0) { throw "Application startup failed: $($app.ExitCode)" }
