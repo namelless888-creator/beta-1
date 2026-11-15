@@ -14,10 +14,18 @@ jobs:
         run: |
           $checks = Start-Process ./publish/Beta1.exe -ArgumentList '--integration-test' -PassThru
           if (-not $checks.WaitForExit(30000)) { $checks.Kill(); throw 'Recovery checks timed out' }
-          if ($checks.ExitCode -ne 0) { throw 'Shortcut recovery checks failed' }
+          if ($checks.ExitCode -ne 0) { Get-Content ./publish/integration-error.txt -ErrorAction SilentlyContinue; throw 'Integration checks failed' }
           $app = Start-Process ./publish/Beta1.exe -ArgumentList '--smoke-test' -PassThru
           if (-not $app.WaitForExit(30000)) { $app.Kill(); throw 'Application did not finish startup check' }
           if ($app.ExitCode -ne 0) { throw "Application startup failed: $($app.ExitCode)" }
+      - name: Capture rendered UI for review
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($name in @('desktop-preview.png','settings-preview.png','menu-preview.png')) {
+            $path = "./publish/$name"
+            if (Test-Path $path) { Write-Output "PREVIEW:$name`:$([Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path $path))))" }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: Beta1-Windows-x64

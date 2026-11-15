@@ -14,6 +14,7 @@ internal sealed class DesktopIntegration
     internal sealed class Journal
     {
         public List<MovedLink> Links { get; set; } = new();
+        public List<long> IconLayers { get; set; } = new();
         public List<long> Taskbars { get; set; } = new();
     }
     readonly string root;
@@ -49,29 +50,41 @@ internal sealed class DesktopIntegration
     }
     public void RestoreTaskbars()
     {
-        foreach(var value in journal.Taskbars) ShowWindow(new IntPtr(value),5);
+        foreach(var value in journal.Taskbars)
+        {
+            var handle=new IntPtr(value); var name=new System.Text.StringBuilder(256); GetClassName(handle,name,256);
+            if(name.ToString() is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") ShowWindow(handle,5);
+        }
         journal.Taskbars.Clear(); Save();
     }
-    public Dictionary<string,string> ImportDesktopLinks(IEnumerable<Shortcut> imported, string[]? allowedRoots=null)
+    public void HideDesktopIcons()
     {
-        var map=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-        var desktopRoots=allowedRoots??new[] { Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory) };
-        foreach(var app in imported.ToArray())
-        {
-            if(!desktopRoots.Contains(Path.GetDirectoryName(app.Path),StringComparer.OrdinalIgnoreCase)) continue;
-            if(Path.GetExtension(app.Path).ToLowerInvariant() is not (".lnk" or ".url")) continue;
-            var stored=Path.Combine(root,"desktop-links",Guid.NewGuid().ToString("N"),Path.GetFileName(app.Path));
-            try
+        EnumWindows((window,_)=> {
+            var view=FindWindowEx(window,IntPtr.Zero,"SHELLDLL_DefView",null);
+            if(view!=IntPtr.Zero)
             {
-                if(!File.Exists(app.Path)) continue;
-                Directory.CreateDirectory(Path.GetDirectoryName(stored)!);
-                var entry=new MovedLink(app.Path,stored); journal.Links.Add(entry); Save();
-                File.Move(app.Path,stored); map[app.Path]=stored;
+                var list=FindWindowEx(view,IntPtr.Zero,"SysListView32",null);
+                if(list!=IntPtr.Zero) HideIconLayer(list);
             }
-            catch(IOException) { } catch(UnauthorizedAccessException) { }
-        }
-        NotifyDesktop(); return map;
+            return true;
+        },IntPtr.Zero);
     }
+    internal void HideIconLayer(IntPtr layer)
+    {
+        if(!IsWindowVisible(layer)) return;
+        if(!journal.IconLayers.Contains(layer.ToInt64())) { journal.IconLayers.Add(layer.ToInt64()); Save(); }
+        ShowWindow(layer,0);
+    }
+    public void RestoreDesktopIcons()
+    {
+        foreach(var value in journal.IconLayers)
+        {
+            var handle=new IntPtr(value); var name=new System.Text.StringBuilder(256); GetClassName(handle,name,256);
+            if(name.ToString()=="SysListView32") ShowWindow(handle,5);
+        }
+        journal.IconLayers.Clear(); Save();
+    }
+    // Migration only: restore shortcuts moved by versions <= 0.2.0.
     public void RestoreLinks()
     {
         foreach(var item in journal.Links.ToArray())
@@ -92,7 +105,7 @@ internal sealed class DesktopIntegration
         }
         Save(); NotifyDesktop();
     }
-    public void RestoreAll() { try { RestoreLinks(); } finally { RestoreTaskbars(); } }
+    public void RestoreAll() { try { RestoreLinks(); } finally { try { RestoreDesktopIcons(); } finally { RestoreTaskbars(); } } }
     static void NotifyDesktop() => SHChangeNotify(0x08000000,0,IntPtr.Zero,IntPtr.Zero);
     public static void WatchParent(int pid,string root)
     {
@@ -108,6 +121,7 @@ internal sealed class DesktopIntegration
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc callback,IntPtr p);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h,System.Text.StringBuilder name,int count);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent,IntPtr after,string name,string? title);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int command);
     [DllImport("shell32.dll")] static extern void SHChangeNotify(uint id,uint flags,IntPtr item1,IntPtr item2);
 }
