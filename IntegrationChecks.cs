@@ -27,6 +27,7 @@ internal static class IntegrationChecks
             Require(Pixels(source!).SequenceEqual(Pixels(fromLink!)),"shortcut icon must equal original icon, without arrow overlay");
             var before=Directory.GetFiles(desktop).ToDictionary(p=>p,File.ReadAllBytes);
             using var window=new Forms.Form { ShowInTaskbar=false }; window.Show(); Forms.Application.DoEvents();
+            var controls=new CommonControls { Size=8, Classes=1 }; InitCommonControlsEx(ref controls);
             var list=CreateWindowEx(0,"SysListView32","Beta1 test",0x50000000,0,0,200,200,window.Handle,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
             Require(list!=IntPtr.Zero,"native list view created");
             var integration=new DesktopIntegration(Path.Combine(root,"state"));
@@ -48,6 +49,8 @@ internal static class IntegrationChecks
     }
     static byte[] Pixels(BitmapSource bitmap) { int stride=(bitmap.PixelWidth*bitmap.Format.BitsPerPixel+7)/8; var bytes=new byte[stride*bitmap.PixelHeight]; bitmap.CopyPixels(bytes,stride,0); return bytes; }
     static void Require(bool test,string name) { if(!test) throw new InvalidOperationException(name); }
+    [StructLayout(LayoutKind.Sequential)] struct CommonControls { public uint Size,Classes; }
+    [DllImport("comctl32.dll")] static extern bool InitCommonControlsEx(ref CommonControls controls);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);
     [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr handle);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr handle);
