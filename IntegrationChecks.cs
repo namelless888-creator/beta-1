@@ -58,6 +58,13 @@ internal static class IntegrationChecks
             Require(File.Exists(shortcut)&&Directory.GetFiles(desktop,"Test (Бета 1 *).lnk").Length==1,"legacy migration preserves conflicts");
             ShellActions.Shortcut(0x11,0x1B); System.Threading.Thread.Sleep(1800); string startProcess=WindowTasks.ForegroundProcessName(); CaptureScreen("start-control.png"); ShellActions.Escape();
             System.Threading.Thread.Sleep(200); ShellActions.Shortcut(0x5B,0x53); System.Threading.Thread.Sleep(1800); string searchProcess=WindowTasks.ForegroundProcessName(); CaptureScreen("search-control.png"); ShellActions.Escape();
+            foreach(double dpi in new[] { 1.0,1.25,1.5,2.0 })
+            {
+                var nativeDip=new System.Windows.Rect(1580/dpi,1020/dpi,340/dpi,60/dpi);
+                var frame=TrayLayout.Frame(nativeDip,new System.Windows.Size(1920/dpi,1080/dpi),1);
+                Require(Math.Abs(frame.Right-1920/dpi)<.01 && frame.Contains(nativeDip),"unified tray contains native controls and aligns right at DPI "+dpi);
+                Require(frame.Left<nativeDip.Left,"Beta icon has its own space before overflow");
+            }
             bool trayFound=NativeTray.Find(out var actualTaskbar,out var trayArea,out var taskbarArea);
             if(trayFound)
             {
@@ -68,14 +75,37 @@ internal static class IntegrationChecks
                     System.Threading.Thread.Sleep(250);
                     Require(GetWindowRgnBox(actualTaskbar,out var nativeClip)>0 && nativeClip.Right-nativeClip.Left==trayArea.Width,"actual Explorer tray region applied");
                     CaptureScreen("native-tray-control.png");
+                    var frameWindow=new System.Windows.Window { Width=400,Height=70,WindowStyle=System.Windows.WindowStyle.None,ResizeMode=System.Windows.ResizeMode.NoResize,AllowsTransparency=true,Background=System.Windows.Media.Brushes.Transparent,ShowInTaskbar=false,ShowActivated=false,Topmost=true };
+                    var badge=new System.Windows.Controls.Button { Content="B",Width=36,Height=36,HorizontalAlignment=System.Windows.HorizontalAlignment.Left,Margin=new System.Windows.Thickness(12,0,0,0) };
+                    frameWindow.Content=new System.Windows.Controls.Border { Background=new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(32,42,38)),BorderBrush=System.Windows.Media.Brushes.Gray,BorderThickness=new System.Windows.Thickness(1),CornerRadius=new System.Windows.CornerRadius(16),Child=badge };
+                    try
+                    {
+                        frameWindow.Show();
+                        var transform=System.Windows.PresentationSource.FromVisual(frameWindow)!.CompositionTarget!.TransformFromDevice;
+                        var topLeft=transform.Transform(new System.Windows.Point(trayArea.Left,trayArea.Top)); var bottomRight=transform.Transform(new System.Windows.Point(trayArea.Right,trayArea.Bottom));
+                        var frame=TrayLayout.Frame(new System.Windows.Rect(topLeft,bottomRight),new System.Windows.Size(System.Windows.SystemParameters.PrimaryScreenWidth,System.Windows.SystemParameters.PrimaryScreenHeight),1);
+                        frameWindow.Left=frame.Left; frameWindow.Top=frame.Top; frameWindow.Width=frame.Width; frameWindow.Height=frame.Height; frameWindow.UpdateLayout();
+                        Pump(300); NativeTray.Raise(); Pump(300); CaptureScreen("unified-tray-control.png");
+                        var automation=System.Windows.Automation.AutomationElement.FromHandle(actualTaskbar);
+                        var overflow=automation.FindFirst(System.Windows.Automation.TreeScope.Descendants,new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.NameProperty,"Show hidden icons"));
+                        if(overflow!=null && overflow.TryGetCurrentPattern(System.Windows.Automation.InvokePattern.Pattern,out var invoke))
+                        {
+                            ((System.Windows.Automation.InvokePattern)invoke).Invoke(); Pump(400); CaptureScreen("overflow-tray-control.png"); ShellActions.Escape();
+                        }
+                    }
+                    finally { frameWindow.Close(); }
                 }
                 finally { NativeTray.Restore(original); }
             }
-            File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Existing and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\nStart foreground: {startProcess}\nSearch foreground: {searchProcess}\n");
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!,"integration-report.txt"),$"Unified tray geometry at 100/125/150/200% DPI: PASS\nExisting and minimized windows: PASS\nPinned target matching: PASS\nNative region restoration: PASS\nExplorer tray detected: {trayFound}, width {trayArea.Width}\nStart foreground: {startProcess}\nSearch foreground: {searchProcess}\n");
             return 0;
         }
         catch(Exception ex) { File.WriteAllText(Path.Combine(Path.GetDirectoryName(Environment.ProcessPath)!, "integration-error.txt"),ex.ToString()); return 4; }
         finally { try { Directory.Delete(root,true); } catch { } }
+    }
+    static void Pump(int milliseconds)
+    {
+        var frame=new System.Windows.Threading.DispatcherFrame(); var timer=new System.Windows.Threading.DispatcherTimer { Interval=TimeSpan.FromMilliseconds(milliseconds) }; timer.Tick+=(_,_)=> { timer.Stop(); frame.Continue=false; }; timer.Start(); System.Windows.Threading.Dispatcher.PushFrame(frame);
     }
     static void CaptureScreen(string name)
     {

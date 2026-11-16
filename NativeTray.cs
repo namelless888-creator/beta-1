@@ -29,6 +29,7 @@ internal static class NativeTray
         catch(ElementNotAvailableException) { } catch(COMException) { } catch(ArgumentException) { } catch(InvalidOperationException) { }
         return false;
     }
+    public static void Raise() { var h=FindWindow("Shell_TrayWnd",null); if(h!=IntPtr.Zero) SetWindowPos(h,new IntPtr(-1),0,0,0,0,0x13); }
     public static uint ProcessId(IntPtr h) { GetWindowThreadProcessId(h,out uint pid); return pid; }
     public static SavedRegion Capture(IntPtr h)
     {

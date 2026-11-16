@@ -202,7 +202,7 @@ public partial class App : System.Windows.Application
             LayoutTransform=new ScaleTransform(scale,scale), ClipToBounds=true };
         w.Content=border;
         w.PreviewMouseLeftButtonDown += (_,ev) => {
-            if(Keyboard.Modifiers==ModifierKeys.Alt) { w.DragMove(); ev.Handled=true; prefs.Positions[id]=new[] { w.Left,w.Top }; Save(); }
+            if(Keyboard.Modifiers==ModifierKeys.Alt && id!="Состояние") { w.DragMove(); ev.Handled=true; prefs.Positions[id]=new[] { w.Left,w.Top }; Save(); }
         };
         w.PreviewKeyDown += (_,ev) => { if(ev.Key==Key.Escape) w.Hide(); };
         w.Deactivated += (_,_) => { if(id is not ("Док" or "Состояние")) Lower(w); };
@@ -420,12 +420,16 @@ public partial class App : System.Windows.Application
         if(nativeTray && NativeTray.Find(out _,out var area,out _))
         {
             var matrix=PresentationSource.FromVisual(trayWindow)?.CompositionTarget?.TransformFromDevice;
-            var point=new Point(area.Left,area.Top); if(matrix.HasValue) point=matrix.Value.Transform(point);
-            trayWindow.Left=Math.Max(0,point.X-trayWindow.Width-8); trayWindow.Top=DesktopArea.Height-trayWindow.Height-2;
+            var topLeft=new Point(area.Left,area.Top); var bottomRight=new Point(area.Right,area.Bottom);
+            if(matrix.HasValue) { topLeft=matrix.Value.Transform(topLeft); bottomRight=matrix.Value.Transform(bottomRight); }
+            var frame=TrayLayout.Frame(new Rect(topLeft,bottomRight),new Size(DesktopArea.Width,DesktopArea.Height),EffectiveScale);
+            trayWindow.Left=frame.Left; trayWindow.Top=frame.Top; trayWindow.Width=frame.Width; trayWindow.Height=frame.Height;
         }
-        // Bottom controls are anchored to actual tray geometry, never to old dragged positions.
-        trayWindow.Left=Math.Clamp(trayWindow.Left,0,DesktopArea.Width-trayWindow.Width-12);
-        if(!nativeTray) { trayWindow.Left=DesktopArea.Width-trayWindow.Width-16; trayWindow.Top=DesktopArea.Height-trayWindow.Height-8; }
+        else
+        {
+            trayWindow.Width=280*EffectiveScale; trayWindow.Height=58*EffectiveScale;
+            trayWindow.Left=DesktopArea.Width-trayWindow.Width-12; trayWindow.Top=DesktopArea.Height-trayWindow.Height-8;
+        }
         double available=Math.Max(160,trayWindow.Left-32);
         double scale=Math.Min(EffectiveScale,available/Math.Max(1,DockWidth));
         ((Border)dockWindow.Content).LayoutTransform=new ScaleTransform(scale,scale);
@@ -445,12 +449,16 @@ public partial class App : System.Windows.Application
         if(nativeTray && NativeTray.Find(out _,out var area,out _))
         {
             var matrix=PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice;
-            nativeReserve=area.Width*(matrix?.M11??1)+280;
+            nativeReserve=area.Width*(matrix?.M11??1)/EffectiveScale+60;
         }
         else nativeReserve=280;
         var row=(StackPanel)((Border)window.Content).Child;
-        for(int i=1;i<row.Children.Count;i++) row.Children[i].Visibility=Visibility.Visible;
-        if(old!=nativeTray || Math.Abs(oldReserve-nativeReserve)>1) { window.Width=260*EffectiveScale; RefreshDock(); RepositionBottom(); }
+        // Explorer supplies clock, language, network, audio, battery and overflow exactly once.
+        for(int i=1;i<row.Children.Count;i++) row.Children[i].Visibility=nativeTray?Visibility.Collapsed:Visibility.Visible;
+        row.HorizontalAlignment=HorizontalAlignment.Left;
+        if(old!=nativeTray || Math.Abs(oldReserve-nativeReserve)>1) { RefreshDock(); RepositionBottom(); }
+        window.Topmost=true;
+        if(nativeTray) NativeTray.Raise();
     }
     void OpenNetwork() { bottomBar?.Hold(); ShellActions.Network(); }
     void OpenVolume()
@@ -492,7 +500,8 @@ public partial class App : System.Windows.Application
         row.Children.Add(Symbol("\uE701",OpenNetwork,"Сеть",18));
         row.Children.Add(Symbol("\uE767",OpenVolume,"Громкость",18));
         status.FontSize=13; row.Children.Add(status);
-        Panel("Состояние",-1,-1,315,58,row);
+        var trayFrame=Panel("Состояние",-1,-1,280,58,row);
+        trayFrame.Activated+=(_,_)=> { if(nativeTray) NativeTray.Raise(); };
     }
     void Tick()
     {
@@ -512,7 +521,7 @@ public partial class App : System.Windows.Application
         if(settings!=null) { settings.WindowState=WindowState.Normal; settings.Activate(); return; }
         var body=new StackPanel { Margin=new Thickness(28) };
         body.Children.Add(Label("Бета 1 · Панель управления",25));
-        body.Children.Add(new TextBlock { Text="Версия 0.5.2", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
+        body.Children.Add(new TextBlock { Text="Версия 0.6.0", Foreground=Brush("#AFC3B7"), Margin=new Thickness(0,5,0,0) });
         body.Children.Add(new TextBlock { Text="Внешний вид и рабочий стол", Opacity=.7, Margin=new Thickness(0,6,0,22) });
         void Range(string name,double min,double max,double value,Action<double> update,bool integer=false)
         {
